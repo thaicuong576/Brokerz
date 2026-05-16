@@ -1,15 +1,14 @@
-import base64
-import hashlib
-import hmac
-import json
 import os
 import time
-from dataclasses import dataclass
-from typing import Any, Dict, Optional
-
+import logging
+import jwt
 import requests
+from dataclasses import dataclass
+from typing import Any, Dict, Optional, List
 from fastapi import HTTPException, status
+from jwt.exceptions import PyJWTError, ExpiredSignatureError
 
+logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class SupabaseClaims:
@@ -20,71 +19,93 @@ class SupabaseClaims:
     user_metadata: Dict[str, Any]
     raw: Dict[str, Any]
 
+class JWKSCache:
+    """Caches public keys from Supabase to avoid hitting the network on every request."""
+    _keys: Dict[str, Any] = {}
+    _last_fetch: float = 0
+    _ttl: int = 3600 # 1 hour
 
-def _b64url_decode(value: str) -> bytes:
-    padding = "=" * (-len(value) % 4)
-    return base64.urlsafe_b64decode(value + padding)
+    @classmethod
+    def get_public_key(cls, kid: str) -> Optional[Any]:
+        now = time.time()
+        if kid not in cls._keys or (now - cls._last_fetch) > cls._ttl:
+            cls._fetch_keys()
+        return cls._keys.get(kid)
 
+    @classmethod
+    def _fetch_keys(cls):
+        supabase_url = os.getenv("SUPABASE_URL")
+        if not supabase_url:
+            return
+        
+        try:
+            # Supabase JWKS endpoint
+            url = f"{supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
+            response = requests.get(url, timeout=5)
+            if response.status_code == 200:
+                jwks = response.json()
+                for key_data in jwks.get("keys", []):
+                    kid = key_data.get("kid")
+                    if kid:
+                        # Convert JWK to PEM format using PyJWT's helper
+                        public_key = jwt.algorithms.RSAAlgorithm.from_jwk(key_data) if key_data.get("kty") == "RSA" else \
+                                     jwt.algorithms.ECAlgorithm.from_jwk(key_data)
+                        cls._keys[kid] = public_key
+                cls._last_fetch = time.time()
+                logger.info(f"Successfully refreshed {len(cls._keys)} JWKS keys from Supabase.")
+        except Exception as e:
+            logger.error(f"Failed to fetch JWKS from Supabase: {e}")
 
-def _decode_json(value: str) -> Dict[str, Any]:
-    return json.loads(_b64url_decode(value).decode("utf-8"))
-
-
-def _verify_hs256(token: str, secret: str) -> Dict[str, Any]:
+def verify_supabase_token(token: str) -> SupabaseClaims:
+    """
+    Verifies a Supabase JWT token using:
+    1. Local HS256 secret (if configured)
+    2. Local ES256/RS256 public keys (fetched via JWKS)
+    3. Fallback to Supabase /user API (if local verification fails)
+    """
+    secret = os.getenv("SUPABASE_JWT_SECRET")
+    audience = os.getenv("SUPABASE_JWT_AUDIENCE", "authenticated")
+    
+    # 1. Attempt Local Verification
     try:
-        header_raw, payload_raw, signature_raw = token.split(".")
-        header = _decode_json(header_raw)
-        payload = _decode_json(payload_raw)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Supabase token format",
-        ) from exc
+        unverified_header = jwt.get_unverified_header(token)
+        alg = unverified_header.get("alg")
+        kid = unverified_header.get("kid")
 
-    if header.get("alg") != "HS256":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unsupported Supabase token algorithm",
-        )
+        # Case A: HS256 with provided secret
+        if alg == "HS256" and secret:
+            payload = jwt.decode(token, secret, algorithms=["HS256"], audience=audience)
+            return _create_claims(payload)
 
-    signed = f"{header_raw}.{payload_raw}".encode("utf-8")
-    expected = hmac.new(secret.encode("utf-8"), signed, hashlib.sha256).digest()
-    actual = _b64url_decode(signature_raw)
-    if not hmac.compare_digest(expected, actual):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Supabase token signature",
-        )
+        # Case B: Asymmetric Key (ES256/RS256) via JWKS
+        if kid:
+            public_key = JWKSCache.get_public_key(kid)
+            if public_key:
+                payload = jwt.decode(token, public_key, algorithms=[alg], audience=audience)
+                return _create_claims(payload)
 
-    now = int(time.time())
-    if payload.get("exp") and int(payload["exp"]) < now:
+    except ExpiredSignatureError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Supabase token expired")
-    if payload.get("nbf") and int(payload["nbf"]) > now:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Supabase token not active")
+    except PyJWTError as e:
+        # If local verification fails, we don't give up yet! 
+        # We fallback to the Supabase API verification which is the source of truth.
+        logger.warning(f"Local JWT verification failed ({type(e).__name__}): {e}. Falling back to Supabase API.")
+    except Exception as e:
+        logger.error(f"Unexpected error during JWT verification: {e}")
 
-    expected_aud = os.getenv("SUPABASE_JWT_AUDIENCE", "authenticated")
-    aud = payload.get("aud")
-    if expected_aud:
-        valid_aud = expected_aud in aud if isinstance(aud, list) else aud == expected_aud
-        if not valid_aud:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Supabase token audience")
+    # 2. Fallback to Supabase API Verification
+    return _verify_with_supabase_api(token)
 
-    expected_issuer = os.getenv("SUPABASE_JWT_ISSUER")
-    if expected_issuer and payload.get("iss") != expected_issuer:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Supabase token issuer")
-
-    return payload
-
-
-def _verify_with_supabase_api(token: str) -> Dict[str, Any]:
+def _verify_with_supabase_api(token: str) -> SupabaseClaims:
     supabase_url = os.getenv("SUPABASE_URL")
-    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ROLE_KEY")
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     anon_key = os.getenv("SUPABASE_ANON_KEY")
     api_key = service_key or anon_key
+    
     if not supabase_url or not api_key:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Supabase auth verification is not configured. Set SUPABASE_JWT_SECRET or SUPABASE_URL plus SUPABASE_SERVICE_ROLE_KEY.",
+            detail="Supabase auth verification is not configured.",
         )
 
     try:
@@ -93,33 +114,26 @@ def _verify_with_supabase_api(token: str) -> Dict[str, Any]:
             headers={"Authorization": f"Bearer {token}", "apikey": api_key},
             timeout=8,
         )
-    except requests.RequestException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Could not reach Supabase auth service",
-        ) from exc
+        if response.status_code == 200:
+            data = response.json()
+            payload = {
+                "sub": data.get("id"),
+                "email": data.get("email"),
+                "aud": data.get("aud"),
+                "app_metadata": data.get("app_metadata") or {},
+                "user_metadata": data.get("user_metadata") or {},
+            }
+            return _create_claims(payload)
+    except Exception as e:
+        logger.error(f"Supabase API verification failed: {e}")
 
-    if response.status_code != 200:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Supabase token")
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Supabase token")
 
-    data = response.json()
-    return {
-        "sub": data.get("id"),
-        "email": data.get("email"),
-        "aud": data.get("aud"),
-        "app_metadata": data.get("app_metadata") or {},
-        "user_metadata": data.get("user_metadata") or {},
-    }
-
-
-def verify_supabase_token(token: str) -> SupabaseClaims:
-    secret = os.getenv("SUPABASE_JWT_SECRET")
-    payload = _verify_hs256(token, secret) if secret else _verify_with_supabase_api(token)
-
+def _create_claims(payload: Dict[str, Any]) -> SupabaseClaims:
     subject = payload.get("sub")
     if not subject:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Supabase token missing subject")
-
+    
     return SupabaseClaims(
         sub=subject,
         email=payload.get("email"),

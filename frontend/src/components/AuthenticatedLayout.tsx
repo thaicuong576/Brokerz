@@ -14,7 +14,6 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
   const pathname = usePathname();
   const [userType, setUserType] = useState<"broker" | "investor">("investor");
   const [session, setSession] = useState<any>(null);
-  const [localAuth, setLocalAuth] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isTethered, setIsTethered] = useState(false);
   const [profile, setProfile] = useState<any>(null);
@@ -29,32 +28,22 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
   };
 
   useEffect(() => {
-    const isMock = localStorage.getItem("brokez_mock_auth");
-    
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
       setSession(currentSession);
-      const intendedRole = localStorage.getItem("intended_role");
-      const role = intendedRole || currentSession?.user?.user_metadata?.role || isMock;
-      const uid = currentSession?.user?.id || (isMock ? 'mock-id' : null);
 
-      if (uid) {
-        if (isMock && !currentSession) setLocalAuth(true);
-        checkTether(role || 'investor', uid, currentSession?.user?.user_metadata);
+      if (currentSession?.user) {
+        checkTether(currentSession.user.id, currentSession.user.user_metadata);
       } else {
         setLoading(false);
         router.push('/login');
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session?.user) {
-        const intendedRole = localStorage.getItem("intended_role");
-        const role = intendedRole || session.user.user_metadata?.role || 'investor';
-        setUserType(role as any);
-        checkTether(role, session.user.id, session.user.user_metadata);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+      if (newSession?.user) {
+        checkTether(newSession.user.id, newSession.user.user_metadata);
       } else {
-        setLocalAuth(false);
         setLoading(false);
         router.push('/login');
       }
@@ -63,17 +52,17 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
     return () => subscription.unsubscribe();
   }, [router]);
 
-  const checkTether = async (role: string, userId: string, metadata?: any) => {
+  const checkTether = async (userId: string, metadata?: any) => {
     setLoading(true);
     try {
       const profileData = await apiService.getProfile(
         userId, 
-        role, 
+        undefined, 
         metadata?.full_name || metadata?.name, 
         metadata?.avatar_url || metadata?.picture
       );
       
-      const currentRole = profileData?.role?.toLowerCase() || role.toLowerCase();
+      const currentRole = profileData?.role?.toLowerCase() || "investor";
       setUserType(currentRole as any);
       setProfile(profileData);
 
@@ -91,9 +80,6 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    localStorage.removeItem("brokez_mock_auth");
-    localStorage.removeItem("intended_role");
-    setLocalAuth(false);
     setSession(null);
     setIsTethered(false);
     router.push('/login');
@@ -107,7 +93,7 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
     );
   }
 
-  if (!session && !localAuth) return null;
+  if (!session) return null;
 
   if (userType === 'investor' && !isTethered) {
     return <TetherGate user={session?.user} onGateUnlock={() => setIsTethered(true)} />;

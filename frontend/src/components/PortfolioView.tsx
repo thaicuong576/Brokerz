@@ -47,6 +47,7 @@ export function PortfolioView({ isBroker = false, user = null, profile = null }:
   const [recTab, setRecTab] = useState<"BUY" | "SELL">("BUY");
   const [newRec, setNewRec] = useState({ symbol: "", type: "BUY", reason: "" });
   const [editingRecId, setEditingRecId] = useState<string | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
     // 1. Initial Load from Supabase Cloud
@@ -96,7 +97,11 @@ export function PortfolioView({ isBroker = false, user = null, profile = null }:
 
     fetchData(); 
 
-    return () => ws.close();
+    const timer = setTimeout(() => setIsMounted(true), 200);
+    return () => {
+      ws.close();
+      clearTimeout(timer);
+    };
   }, [user?.id]);
 
   const syncToCloud = async (newHoldings: Holding[]) => {
@@ -316,61 +321,63 @@ export function PortfolioView({ isBroker = false, user = null, profile = null }:
               className="md:col-span-2 glass p-6 rounded-3xl flex flex-col md:flex-row items-center gap-8"
             >
               <div className="flex-1 w-full h-[220px] relative">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie 
-                      data={(() => {
-                        const data = holdings.map(h => ({ name: h.symbol, value: h.weight }));
-                        if (totalWeight < 100) {
-                          data.push({ name: "TIỀN MẶT", value: 100 - totalWeight });
-                        }
-                        return data;
-                      })()} 
-                      innerRadius={55} 
-                      outerRadius={90} 
-                      paddingAngle={5} 
-                      dataKey="value"
-                      labelLine={false}
-                      label={({ cx, cy, midAngle, innerRadius, outerRadius, value, name }) => {
-                        const RADIAN = Math.PI / 180;
-                        const safeCx = Number(cx || 0);
-                        const safeCy = Number(cy || 0);
-                        const safeInner = Number(innerRadius || 0);
-                        const safeOuter = Number(outerRadius || 0);
-                        const safeAngle = Number(midAngle || 0);
-                        const radius = safeInner + (safeOuter - safeInner) * 0.5;
-                        const x = safeCx + radius * Math.cos(-safeAngle * RADIAN);
-                        const y = safeCy + radius * Math.sin(-safeAngle * RADIAN);
-                        
-                        // Scale font size based on value (percentage)
-                        const fontSize = Math.max(8, Math.min(14, value * 0.3));
-                        
-                        return (
-                          <text 
-                            x={x} 
-                            y={y} 
-                            fill="white" 
-                            textAnchor="middle" 
-                            dominantBaseline="central"
-                            className="font-black"
-                            style={{ fontSize: `${fontSize}px` }}
-                          >
-                            {name}
-                          </text>
-                        );
-                      }}
-                    >
-                      {holdings.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                      {totalWeight < 100 && <Cell key="cell-cash" fill="#334155" />}
-                    </Pie>
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }}
-                      itemStyle={{ color: '#fff' }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
+                {isMounted && (
+                  <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100} debounce={50}>
+                    <PieChart>
+                      <Pie 
+                        data={(() => {
+                          const data = holdings.map(h => ({ name: h.symbol, value: h.weight }));
+                          if (totalWeight < 100) {
+                            data.push({ name: "TIỀN MẶT", value: 100 - totalWeight });
+                          }
+                          return data;
+                        })()} 
+                        innerRadius={55} 
+                        outerRadius={90} 
+                        paddingAngle={5} 
+                        dataKey="value"
+                        labelLine={false}
+                        label={({ cx, cy, midAngle, innerRadius, outerRadius, value, name }) => {
+                          const RADIAN = Math.PI / 180;
+                          const safeCx = Number(cx || 0);
+                          const safeCy = Number(cy || 0);
+                          const safeInner = Number(innerRadius || 0);
+                          const safeOuter = Number(outerRadius || 0);
+                          const safeAngle = Number(midAngle || 0);
+                          const radius = safeInner + (safeOuter - safeInner) * 0.5;
+                          const x = safeCx + radius * Math.cos(-safeAngle * RADIAN);
+                          const y = safeCy + radius * Math.sin(-safeAngle * RADIAN);
+                          
+                          // Scale font size based on value (percentage)
+                          const fontSize = Math.max(8, Math.min(14, value * 0.3));
+                          
+                          return (
+                            <text 
+                              x={x} 
+                              y={y} 
+                              fill="white" 
+                              textAnchor="middle" 
+                              dominantBaseline="central"
+                              className="font-black"
+                              style={{ fontSize: `${fontSize}px` }}
+                            >
+                              {name}
+                            </text>
+                          );
+                        }}
+                      >
+                        {holdings.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                        {totalWeight < 100 && <Cell key="cell-cash" fill="#334155" />}
+                      </Pie>
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }}
+                        itemStyle={{ color: '#fff' }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                   <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Phân bổ</p>
                   <p className="text-2xl font-black">{totalWeight}%</p>
@@ -794,13 +801,3 @@ export function PortfolioView({ isBroker = false, user = null, profile = null }:
     </>
   );
 }
-
-
-
-
-
-
-
-
-
-

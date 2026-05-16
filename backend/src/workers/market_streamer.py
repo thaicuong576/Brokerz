@@ -40,14 +40,14 @@ async def market_historian_loop(socket_manager=None):
                 
                 new_snapshot = IndexSnapshot(
                     symbol="VNINDEX",
-                    trading_date=datetime.now(),
+                    trading_date=datetime.now().date(),
                     point=point,
                     change_point=data.get("Change", 0),
                     change_percent=data.get("RatioChange", 0),
                     total_volume=data.get("TotalTrade", 0),
                     total_value=data.get("TotalValue", 0),
                 )
-                db.add(new_snapshot)
+                db.merge(new_snapshot)
             
             # 2. Fetch Top 15 Stocks
             bluechips = ["FPT", "VCB", "VIC", "VNM", "MSN", "GAS", "HPG", "SSI", "STB", "TCB", "MWG", "REE", "HDB", "MBB", "VPB"]

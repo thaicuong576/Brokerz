@@ -24,6 +24,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [profile, setProfile] = useState<any>(null);
   const [workspace, setWorkspace] = useState<any>(null);
   const [visitedTabs, setVisitedTabs] = useState<Set<string>>(new Set());
+  const [brokerPendingApproval, setBrokerPendingApproval] = useState(false);
 
   const getActiveTab = () => {
     if (pathname === "/") return "intelligence";
@@ -75,6 +76,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       let currentWorkspace = await apiService.getCurrentWorkspace();
       const currentRole = me.role === "BROKER" ? "broker" : "investor";
 
+      // Detect broker-pending state: user intended broker login but got INVESTOR from backend
+      const loginIntent = typeof window !== 'undefined'
+        ? localStorage.getItem('bkz_login_intent')
+        : null;
+      if (loginIntent === 'broker' && currentRole === 'investor') {
+        setBrokerPendingApproval(true);
+        setLoading(false);
+        return;
+      }
+      setBrokerPendingApproval(false);
+
       if (currentRole === "broker" && !currentWorkspace.workspace) {
         const created = await apiService.bootstrapBrokerWorkspace({
           name: `${me.full_name || "Broker"} Workspace`,
@@ -108,10 +120,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    if (typeof window !== 'undefined') localStorage.removeItem('bkz_login_intent');
     setSession(null);
     setIsTethered(false);
     setWorkspace(null);
     setProfile(null);
+    setBrokerPendingApproval(false);
     router.push('/login');
   };
 
@@ -124,6 +138,37 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   if (!session) return null;
+
+  if (brokerPendingApproval) {
+    return (
+      <div className="fixed inset-0 z-[200] bg-black flex items-center justify-center p-6 overflow-hidden">
+        <div className="absolute inset-0 -z-10">
+          <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-amber-500/10 blur-[150px] rounded-full animate-pulse" />
+          <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-amber-500/5 blur-[120px] rounded-full" />
+        </div>
+        <div className="w-full max-w-xl glass rounded-[48px] border border-white/5 p-12 relative overflow-hidden text-center">
+          <div className="w-20 h-20 bg-amber-500/10 rounded-[32px] flex items-center justify-center mx-auto mb-8 border border-amber-500/20 shadow-[0_0_30px_rgba(245,158,11,0.15)]">
+            <svg className="w-10 h-10 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+          </div>
+          <h2 className="text-3xl font-black tracking-tighter uppercase mb-4 text-amber-400">Đang Chờ Phê Duyệt</h2>
+          <p className="text-muted-foreground font-medium mb-2 max-w-sm mx-auto">
+            Tài khoản <span className="text-white">{session?.user?.email}</span> chưa được cấp quyền Broker.
+          </p>
+          <p className="text-muted-foreground text-sm mb-10 max-w-sm mx-auto">
+            Liên hệ quản trị viên để được thêm vào danh sách Broker hoặc đăng nhập lại bằng tài khoản nhà đầu tư.
+          </p>
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 mx-auto text-[11px] text-muted-foreground uppercase font-black tracking-widest hover:text-white transition-colors border border-white/10 rounded-2xl px-6 py-3"
+          >
+            Đăng Xuất
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (userType === 'investor' && !isTethered) {
     return <TetherGate user={session?.user} onGateUnlock={loadFoundation} />;

@@ -222,3 +222,38 @@ def revoke_invite(
     invite.revoked_at = datetime.now(timezone.utc)
     db.commit()
     return {"status": "success"}
+
+
+@router.post("/current/leave")
+def leave_current_workspace(
+    actor: CurrentActor = Depends(get_current_actor),
+    db: Session = Depends(get_db),
+):
+    profile = get_or_create_profile(db, actor)
+    if profile.role == "BROKER":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Broker owner cannot leave their own workspace")
+
+    membership = (
+        db.query(WorkspaceMembership)
+        .filter(WorkspaceMembership.profile_id == profile.id, WorkspaceMembership.status == "ACTIVE")
+        .order_by(WorkspaceMembership.joined_at.asc())
+        .first()
+    )
+    if not membership:
+        return {"status": "success"}
+
+    membership.status = "REVOKED"
+    another_active_membership = (
+        db.query(WorkspaceMembership)
+        .filter(
+            WorkspaceMembership.profile_id == profile.id,
+            WorkspaceMembership.status == "ACTIVE",
+            WorkspaceMembership.id != membership.id,
+        )
+        .first()
+    )
+    if not another_active_membership:
+        profile.linked_broker_id = None
+
+    db.commit()
+    return {"status": "success"}

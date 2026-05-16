@@ -1,3 +1,4 @@
+import os
 import uuid
 from typing import Optional
 
@@ -10,6 +11,30 @@ from src.shared.auth.dependencies import CurrentActor
 def _normal_role(value: Optional[str]) -> str:
     role = (value or "INVESTOR").upper()
     return role if role in {"BROKER", "INVESTOR"} else "INVESTOR"
+
+
+def _is_allowlisted_broker(email: Optional[str]) -> bool:
+    """Check if email is in the BROKER_EMAIL_ALLOWLIST env var (comma-separated).
+
+    This is the MVP-safe way to grant BROKER role without needing Supabase
+    app_metadata to be set in the dashboard.  Trust hierarchy:
+      1. BROKER_EMAIL_ALLOWLIST (env) — highest trust, operator-controlled
+      2. app_metadata.role=BROKER in Supabase JWT — trusted if JWT secret is set
+      3. default: INVESTOR
+    """
+    if not email:
+        return False
+    raw = os.getenv("BROKER_EMAIL_ALLOWLIST", "")
+    allowed = {e.strip().lower() for e in raw.split(",") if e.strip()}
+    return email.lower() in allowed
+
+
+def _resolve_role(actor: CurrentActor) -> str:
+    """Resolve the authoritative role for this actor."""
+    if _is_allowlisted_broker(actor.email):
+        return "BROKER"
+    metadata_role = actor.claims.app_metadata.get("role")
+    return _normal_role(metadata_role)
 
 
 def _display_name(actor: CurrentActor) -> Optional[str]:
@@ -26,10 +51,16 @@ def get_or_create_profile(db: Session, actor: CurrentActor) -> Profile:
     profile_id = uuid.UUID(actor.id)
     profile = db.query(Profile).filter(Profile.id == profile_id).first()
 
-    authoritative_role = actor.claims.app_metadata.get("role")
-    role = _normal_role(authoritative_role)
+    role = _resolve_role(actor)
 
     if not profile:
+        # Prevent UniqueViolation if the user re-registered with the same email
+        if actor.email:
+            existing = db.query(Profile).filter(Profile.email == actor.email).first()
+            if existing:
+                db.delete(existing)
+                db.commit()
+
         profile = Profile(
             id=profile_id,
             email=actor.email,
@@ -52,7 +83,8 @@ def get_or_create_profile(db: Session, actor: CurrentActor) -> Profile:
     if not profile.avatar_url and _avatar(actor):
         profile.avatar_url = _avatar(actor)
         changed = True
-    if authoritative_role and profile.role != role:
+    # Always re-evaluate the role on each login so allowlist changes take effect
+    if profile.role != role:
         profile.role = role
         changed = True
 

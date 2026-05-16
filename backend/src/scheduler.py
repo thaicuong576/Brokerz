@@ -13,7 +13,7 @@ async def auto_sync_market_data():
         all_symbols.extend(symbols)
     all_symbols = list(set(all_symbols))
     
-    print("🔄 [Scheduler] Tự động nạp dữ liệu EOD lúc 15:05...")
+    print("[Scheduler] Tu dong nap du lieu EOD luc 15:05...")
     await sync_manager.start_eod_sync(all_symbols)
 
 import os
@@ -33,10 +33,10 @@ def get_r2_client():
 
 def cleanup_old_data():
     if not engine:
-        print("❌ [Scheduler] Không có kết nối Database để dọn rác!")
+        print("[Scheduler] Khong co ket noi Database de don rac!")
         return
 
-    print("🧹 [Scheduler] Bắt đầu quá trình lưu trữ R2 và dọn dẹp dữ liệu cũ (Quá 30 ngày)...")
+    print("[Scheduler] Bat dau qua trinh luu tru R2 va don dep du lieu cu (Qua 30 ngay)...")
     bucket_name = os.getenv("R2_BUCKET_NAME", "mirae-archive")
     thirty_days_ago = (datetime.now() - timedelta(days=30)).date()
     
@@ -64,9 +64,9 @@ def cleanup_old_data():
                     # Upload to R2
                     object_key = f"archive/{table}/{table}_{thirty_days_ago.isoformat()}_{int(datetime.now().timestamp())}.parquet"
                     s3.upload_fileobj(out_buffer, bucket_name, object_key)
-                    print(f"📦 [Archive] Đã upload {len(df)} dòng của {table} lên R2 ({object_key})")
+                    print(f"[Archive] Da upload {len(df)} dong cua {table} len R2 ({object_key})")
                 else:
-                    print(f"⚠️ [Archive] R2 credentials missing. Skipping cloud backup for {table}.")
+                    print(f"[Archive] R2 credentials missing. Skipping cloud backup for {table}.")
 
                 # After successful upload (or skip), delete from database
                 with engine.begin() as conn:
@@ -74,11 +74,11 @@ def cleanup_old_data():
                     res = conn.execute(text(delete_q))
                     total_deleted += res.rowcount
             else:
-                print(f"📦 [Archive] {table}: Không có dữ liệu cũ cần dọn.")
+                print(f"[Archive] {table}: Khong co du lieu cu can don.")
                 
-        print(f"✅ [Scheduler] Đã hoàn tất, tổng xóa {total_deleted} bản ghi cũ.")
+        print(f"[Scheduler] Da hoan tat, tong xoa {total_deleted} ban ghi cu.")
     except Exception as e:
-        print(f"❌ [Scheduler] Lỗi trong quá trình Archive/Delete: {e}")
+        print(f"[Scheduler] Loi trong qua trinh Archive/Delete: {e}")
 
 def start_scheduler():
     scheduler = AsyncIOScheduler()
@@ -94,5 +94,5 @@ def start_scheduler():
     # Job cleanup_old_data_job removed - now triggered manually by Admin API
     
     scheduler.start()
-    print("⏳ [Scheduler] APScheduler đã khởi động (AutoSync: 15:05).")
+    print("[Scheduler] APScheduler da khoi dong (AutoSync: 15:05).")
     return scheduler

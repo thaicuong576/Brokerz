@@ -276,22 +276,40 @@ def get_market_snapshot(db: Session = Depends(get_db)):
         "change": s.change_point
     } for s in reversed(history_snapshots)]
 
+    latest_snapshot = history_snapshots[0] if history_snapshots else None
+
     if vnindex_live:
         vnindex = {
             "symbol": "VNINDEX",
             "price": vnindex_live.get("IndexValue", 0),
             "change": vnindex_live.get("Change", 0),
             "change_percent": vnindex_live.get("RatioChange", 0),
+            "trading_date": latest_snapshot.trading_date.isoformat() if latest_snapshot else datetime.now().date().isoformat(),
+            "total_volume": latest_snapshot.total_volume if latest_snapshot else 0,
+            "total_value": latest_snapshot.total_value if latest_snapshot else 0,
+            "breadth_green": latest_snapshot.breadth_green if latest_snapshot else 0,
+            "breadth_red": latest_snapshot.breadth_red if latest_snapshot else 0,
+            "breadth_yellow": latest_snapshot.breadth_yellow if latest_snapshot else 0,
+            "breadth_ceiling": latest_snapshot.breadth_ceiling if latest_snapshot else 0,
+            "breadth_floor": latest_snapshot.breadth_floor if latest_snapshot else 0,
             "status": "LIVE",
             "history": vnindex_history
         }
-    elif history_snapshots:
-        s = history_snapshots[0]
+    elif latest_snapshot:
+        s = latest_snapshot
         vnindex = {
             "symbol": s.symbol,
             "price": s.point,
             "change": s.change_point,
             "change_percent": s.change_percent,
+            "trading_date": s.trading_date.isoformat(),
+            "total_volume": s.total_volume,
+            "total_value": s.total_value,
+            "breadth_green": s.breadth_green,
+            "breadth_red": s.breadth_red,
+            "breadth_yellow": s.breadth_yellow,
+            "breadth_ceiling": s.breadth_ceiling,
+            "breadth_floor": s.breadth_floor,
             "status": "CLOSED",
             "history": vnindex_history
         }
@@ -311,16 +329,91 @@ def get_market_snapshot(db: Session = Depends(get_db)):
 
     # 3. Top Impact
     active_date = get_active_session_date(db)
-    pos_query = text("SELECT symbol, impact_value FROM impact_metrics WHERE impact_value > 0 AND trading_date = :dt ORDER BY impact_value DESC LIMIT 5")
-    neg_query = text("SELECT symbol, impact_value FROM impact_metrics WHERE impact_value < 0 AND trading_date = :dt ORDER BY impact_value ASC LIMIT 5")
-    impact = {
-        "positive": [dict(r._mapping) for r in db.execute(pos_query, {"dt": active_date}).fetchall()],
-        "negative": [dict(r._mapping) for r in db.execute(neg_query, {"dt": active_date}).fetchall()]
-    }
+    pos_query = text("""
+        SELECT symbol, sector, price, ref_price, change_percent, impact_value
+        FROM impact_metrics
+        WHERE impact_value > 0 AND trading_date = :dt
+        ORDER BY impact_value DESC
+        LIMIT 10
+    """)
+    neg_query = text("""
+        SELECT symbol, sector, price, ref_price, change_percent, impact_value
+        FROM impact_metrics
+        WHERE impact_value < 0 AND trading_date = :dt
+        ORDER BY impact_value ASC
+        LIMIT 10
+    """)
+    try:
+        impact = {
+            "positive": [dict(r._mapping) for r in db.execute(pos_query, {"dt": active_date}).fetchall()],
+            "negative": [dict(r._mapping) for r in db.execute(neg_query, {"dt": active_date}).fetchall()]
+        }
+    except Exception:
+        impact = {"positive": [], "negative": []}
+    if not impact["positive"] and not impact["negative"]:
+        fallback_query = text("""
+            SELECT
+                m.symbol,
+                s.sector,
+                m.price,
+                m.ref_price,
+                COALESCE(m.change_percent, CASE WHEN m.ref_price > 0 THEN ((m.price - m.ref_price) / m.ref_price) * 100 ELSE 0 END) AS change_percent,
+                (m.price - m.ref_price) AS impact_value
+            FROM market_prices m
+            LEFT JOIN stocks s ON m.symbol = s.symbol
+            WHERE m.trading_date = :dt AND m.price IS NOT NULL AND m.ref_price IS NOT NULL
+            ORDER BY impact_value DESC
+        """)
+        fallback_rows = [dict(r._mapping) for r in db.execute(fallback_query, {"dt": active_date}).fetchall()]
+        impact = {
+            "positive": [r for r in fallback_rows if (r.get("impact_value") or 0) > 0][:10],
+            "negative": [r for r in reversed(fallback_rows) if (r.get("impact_value") or 0) < 0][:10],
+        }
 
     # 4. Sector Performance
-    sector_query = text("SELECT sector, avg_change FROM sector_performance_metrics WHERE trading_date = (SELECT MAX(trading_date) FROM sector_performance_metrics) ORDER BY avg_change DESC LIMIT 5")
-    sectors = [dict(r._mapping) for r in db.execute(sector_query).fetchall()]
+    sector_query = text("""
+        SELECT trading_date, sector, avg_change, total_stocks
+        FROM sector_performance_metrics
+        WHERE trading_date = (SELECT MAX(trading_date) FROM sector_performance_metrics)
+          AND sector IS NOT NULL
+        ORDER BY avg_change DESC
+    """)
+    try:
+        sectors = [dict(r._mapping) for r in db.execute(sector_query).fetchall()]
+    except Exception:
+        sectors = []
+    if not sectors:
+        reverse_sector = {}
+        for sector, symbols in SECTOR_MAPPING.items():
+            for symbol in symbols:
+                reverse_sector[symbol] = sector
+
+        rows = db.execute(text("""
+            SELECT symbol, trading_date, change_percent
+            FROM market_prices
+            WHERE trading_date = :dt AND change_percent IS NOT NULL
+        """), {"dt": active_date}).fetchall()
+
+        grouped = {}
+        for row in rows:
+            sector = reverse_sector.get(row.symbol)
+            if not sector:
+                continue
+            grouped.setdefault(sector, []).append(float(row.change_percent or 0))
+
+        sectors = sorted(
+            [
+                {
+                    "trading_date": active_date,
+                    "sector": sector,
+                    "avg_change": sum(values) / len(values),
+                    "total_stocks": len(values),
+                }
+                for sector, values in grouped.items()
+            ],
+            key=lambda item: item["avg_change"],
+            reverse=True,
+        )
 
     return {
         "vnindex": vnindex,

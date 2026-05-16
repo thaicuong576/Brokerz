@@ -43,6 +43,7 @@ class IndexSnapshot(Base):
     breadth_ceiling = Column(Integer)
     breadth_floor = Column(Integer)
     updated_at = Column(DateTime(timezone=True), default=func.now())
+
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 
@@ -109,7 +110,7 @@ class Portfolio(Base):
     is_public = Column(Boolean, default=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("profiles.id"))
     created_at = Column(DateTime(timezone=True), default=func.now())
-    
+
     items = relationship("PortfolioItem", backref="portfolio", cascade="all, delete-orphan")
 
 class PortfolioItem(Base):
@@ -146,7 +147,8 @@ class InquiryMessage(Base):
     is_ai_generated = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=func.now())
 
-class Recommendation(Base):
+class LegacyRecommendation(Base):
+    """Deprecated — kept for backward compatibility with existing data."""
     __tablename__ = "recommendations"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     symbol = Column(String(10), nullable=False)
@@ -155,6 +157,44 @@ class Recommendation(Base):
     created_by = Column(UUID(as_uuid=True), ForeignKey("profiles.id"))
     trading_date = Column(Date, default=func.now())
     created_at = Column(DateTime(timezone=True), default=func.now())
+
+class WsRecommendation(Base):
+    """Workspace-scoped recommendation with full lifecycle."""
+    __tablename__ = "ws_recommendations"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("broker_workspaces.id", ondelete="CASCADE"), index=True, nullable=False)
+    broker_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), index=True, nullable=False)
+    symbol = Column(String(10), nullable=False)
+    side = Column(String(4), nullable=False)  # BUY or SELL
+    status = Column(String(20), nullable=False, default="DRAFT")  # DRAFT, ACTIVE, CLOSED, ARCHIVED
+    entry_price = Column(Float, nullable=True)
+    target_price = Column(Float, nullable=True)
+    cutloss_price = Column(Float, nullable=True)
+    thesis = Column(String, nullable=True)
+    risk_note = Column(String, nullable=True)
+    closed_reason = Column(String, nullable=True)  # TARGET_REACHED, CUTLOSS_HIT, MANUAL
+    published_at = Column(DateTime(timezone=True), nullable=True)
+    closed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
+
+    broker = relationship("Profile", foreign_keys=[broker_id])
+    workspace = relationship("BrokerWorkspace", foreign_keys=[workspace_id])
+    events = relationship("RecommendationEvent", backref="recommendation", cascade="all, delete-orphan", order_by="RecommendationEvent.created_at")
+
+class RecommendationEvent(Base):
+    """Immutable audit trail for recommendation lifecycle changes."""
+    __tablename__ = "recommendation_events"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    recommendation_id = Column(UUID(as_uuid=True), ForeignKey("ws_recommendations.id", ondelete="CASCADE"), index=True, nullable=False)
+    event_type = Column(String(30), nullable=False)  # CREATED, PUBLISHED, THESIS_UPDATED, TARGET_UPDATED, CUTLOSS_UPDATED, CLOSED, ARCHIVED
+    actor_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
+    before_state = Column(String, nullable=True)  # JSON snapshot
+    after_state = Column(String, nullable=True)   # JSON snapshot
+    note = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=func.now())
+
+    actor = relationship("Profile", foreign_keys=[actor_id])
 
 class Notification(Base):
     __tablename__ = "notifications"
@@ -166,4 +206,3 @@ class Notification(Base):
     link = Column(String, nullable=True) # ID of the related object
     is_read = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=func.now())
-

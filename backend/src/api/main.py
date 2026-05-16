@@ -1,15 +1,16 @@
 import os
-from fastapi import FastAPI, Depends, Security, HTTPException, status, WebSocket, WebSocketDisconnect
-from fastapi.security import APIKeyHeader
+from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from src.api.routers import market, report, portfolio, profile, inquiry, notification
 from src.modules.identity import router as identity_router
 from src.modules.workspace import router as workspace_router
+from src.modules.recommendations import router as recommendations_router
 from src.scheduler import start_scheduler
 from src.workers.market_streamer import start_streams
 from src.cache import db
 from typing import List
+from src.shared.auth.dependencies import get_current_actor
 
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -69,39 +70,32 @@ def root():
 # CORS middleware
 origins = [
     "http://localhost:3000",
-    "http://127.0.0.1:3000"
+    "http://127.0.0.1:3000",
 ]
 frontend_url = os.getenv("FRONTEND_URL")
 if frontend_url:
     origins.append(frontend_url)
 
-# CORS middleware - Broadened for local development reliability
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=False)
-def get_api_key(api_key: str = Security(api_key_header)):
-    expected_key = os.getenv("API_SECRET_KEY", "mirae-dev-key")
-    if not api_key or api_key != expected_key:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing API Key"
-        )
-    return api_key
+# All routers use JWT auth via get_current_actor
+jwt_deps = [Depends(get_current_actor)]
 
-app.include_router(market.router, dependencies=[Depends(get_api_key)])
-app.include_router(report.router, dependencies=[Depends(get_api_key)])
-app.include_router(portfolio.router, dependencies=[Depends(get_api_key)])
-app.include_router(profile.router, dependencies=[Depends(get_api_key)])
-app.include_router(inquiry.router, dependencies=[Depends(get_api_key)])
-app.include_router(notification.router, dependencies=[Depends(get_api_key)])
+app.include_router(market.router, dependencies=jwt_deps)
+app.include_router(report.router, dependencies=jwt_deps)
+app.include_router(portfolio.router, dependencies=jwt_deps)
+app.include_router(profile.router, dependencies=jwt_deps)
+app.include_router(inquiry.router, dependencies=jwt_deps)
+app.include_router(notification.router, dependencies=jwt_deps)
 app.include_router(identity_router.router)
 app.include_router(workspace_router.router)
+app.include_router(recommendations_router.router)
 
 @app.api_route("/health", methods=["GET", "HEAD"], tags=["System"])
 def health_check():
