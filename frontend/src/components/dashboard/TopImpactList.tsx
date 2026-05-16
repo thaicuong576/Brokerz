@@ -7,7 +7,7 @@ import { ErrorCard } from "@/components/ui/error-card";
 export default function TopImpactList() {
   const { data, isLoading, error, mutate } = useTopImpact();
 
-  if (error) return <ErrorCard message="Failed to load Top Impact" onRetry={mutate} />;
+  if (error) return <ErrorCard message="Không tải được top tác động VN-Index" onRetry={mutate} />;
 
   if (isLoading || !data) return (
     <div className="bg-panel border border-zinc-800 rounded-lg shadow-md p-4 h-full flex flex-col gap-3">

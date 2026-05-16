@@ -15,6 +15,8 @@ class IndexOverviewResponse(BaseModel):
     breadth_yellow: Optional[int]
     breadth_ceiling: Optional[int]
     breadth_floor: Optional[int]
+    source: Optional[str] = None
+    source_label: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -30,6 +32,9 @@ class ImpactMetric(BaseModel):
 class TopImpactResponse(BaseModel):
     positive: List[ImpactMetric]
     negative: List[ImpactMetric]
+    source: Optional[str] = None
+    source_label: Optional[str] = None
+    trading_date: Optional[date] = None
 
 class ForeignTradeMetric(BaseModel):
     symbol: str
@@ -45,6 +50,10 @@ class ForeignTradingResponse(BaseModel):
     top_buy: List[ForeignTradeMetric]
     top_sell: List[ForeignTradeMetric]
     total_net_val: float
+    source: Optional[str] = None
+    source_label: Optional[str] = None
+    trading_date: Optional[date] = None
+    is_eod: bool = False
 
 class SectorPerformanceMetric(BaseModel):
     trading_date: date
@@ -55,6 +64,9 @@ class SectorPerformanceMetric(BaseModel):
 
 class SectorPerformanceResponse(BaseModel):
     sectors: List[SectorPerformanceMetric]
+    source: Optional[str] = None
+    source_label: Optional[str] = None
+    trading_date: Optional[date] = None
 
 class ManualOverrideRequest(BaseModel):
     pe_ratio: Optional[float] = None

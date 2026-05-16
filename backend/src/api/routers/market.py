@@ -19,6 +19,52 @@ from src.config import SECTOR_MAPPING
 
 router = APIRouter(prefix="/api/v1", tags=["Market Data"])
 
+
+def _sync_completed_for(target_date, sync_type: str) -> bool:
+    status = sync_manager.get_status() or {}
+    if not target_date:
+        return False
+    return (
+        status.get("status") == "completed"
+        and status.get("type") == sync_type
+        and str(status.get("date")) == str(target_date)
+    )
+
+
+def _foreign_source_meta(target_date):
+    if _sync_completed_for(target_date, "EOD"):
+        return {
+            "source": "SSI_EOD",
+            "source_label": "SSI EOD đã chốt",
+            "is_eod": True,
+        }
+    return {
+        "source": "DNSE_INTRADAY_WITH_SSI_FALLBACK",
+        "source_label": "DNSE trong phiên, SSI bổ sung khi có EOD",
+        "is_eod": False,
+    }
+
+
+def _market_source_meta(is_live: bool):
+    return {
+        "source": "DNSE_REALTIME" if is_live else "DATABASE_SNAPSHOT",
+        "source_label": "DNSE realtime" if is_live else "Dữ liệu đã lưu",
+    }
+
+
+def _impact_source_meta():
+    return {
+        "source": "DNSE_LISTED_SHARES",
+        "source_label": "DNSE + số lượng cổ phiếu niêm yết",
+    }
+
+
+def _sector_source_meta(is_view: bool):
+    return {
+        "source": "SECTOR_VIEW" if is_view else "DNSE_SECTOR_FALLBACK",
+        "source_label": "View ngành đã lưu" if is_view else "DNSE + mapping ngành",
+    }
+
 @router.get("/market/search")
 def search_stocks(q: str, db: Session = Depends(get_db)):
     """Tìm kiếm mã cổ phiếu theo ký tự gõ vào."""
@@ -123,7 +169,21 @@ def get_overview(db: Session = Depends(get_db)):
     ) or db.query(IndexSnapshot).order_by(desc(IndexSnapshot.trading_date)).first()
     if not snapshot:
         raise HTTPException(status_code=404, detail="No overview data found")
-    return snapshot
+    return {
+        "symbol": snapshot.symbol,
+        "trading_date": snapshot.trading_date,
+        "point": snapshot.point,
+        "change_point": snapshot.change_point,
+        "change_percent": snapshot.change_percent,
+        "total_volume": snapshot.total_volume,
+        "total_value": snapshot.total_value,
+        "breadth_green": snapshot.breadth_green,
+        "breadth_red": snapshot.breadth_red,
+        "breadth_yellow": snapshot.breadth_yellow,
+        "breadth_ceiling": snapshot.breadth_ceiling,
+        "breadth_floor": snapshot.breadth_floor,
+        **_market_source_meta(False),
+    }
 
 def get_active_session_date(db: Session):
     """
@@ -167,7 +227,9 @@ def get_top_impact(limit: int = 10, db: Session = Depends(get_db)):
     
     return {
         "positive": [dict(row._mapping) for row in positive_rows],
-        "negative": [dict(row._mapping) for row in negative_rows]
+        "negative": [dict(row._mapping) for row in negative_rows],
+        "trading_date": active_date,
+        **_impact_source_meta(),
     }
 
 @router.get("/foreign-trading", response_model=ForeignTradingResponse)
@@ -178,7 +240,15 @@ def get_foreign_trading(limit: int = 10, db: Session = Depends(get_db)):
     active_date = db.query(func.max(ForeignTrading.trading_date)).scalar()
     
     if not active_date:
-        return {"top_buy": [], "top_sell": [], "total_net_val": 0.0}
+        return {
+            "top_buy": [],
+            "top_sell": [],
+            "total_net_val": 0.0,
+            "source": "NO_DATA",
+            "source_label": "Chưa có dữ liệu",
+            "trading_date": None,
+            "is_eod": False,
+        }
 
     top_buy = db.query(ForeignTrading).filter(ForeignTrading.trading_date == active_date).order_by(desc(ForeignTrading.net_val)).limit(limit).all()
     top_sell = db.query(ForeignTrading).filter(ForeignTrading.trading_date == active_date).order_by(asc(ForeignTrading.net_val)).limit(limit).all()
@@ -189,7 +259,9 @@ def get_foreign_trading(limit: int = 10, db: Session = Depends(get_db)):
     return {
         "top_buy": top_buy,
         "top_sell": top_sell,
-        "total_net_val": b - s
+        "total_net_val": b - s,
+        "trading_date": active_date,
+        **_foreign_source_meta(active_date),
     }
 
 @router.get("/sector-performance", response_model=SectorPerformanceResponse)
@@ -197,7 +269,12 @@ def get_sector_performance(db: Session = Depends(get_db)):
     """Lấy hiệu suất ngành (Tăng/giảm trung bình)."""
     query = text("SELECT trading_date, sector, avg_change, total_stocks FROM sector_performance_metrics WHERE trading_date = (SELECT MAX(trading_date) FROM sector_performance_metrics) AND sector IS NOT NULL ORDER BY avg_change DESC")
     rows = db.execute(query).fetchall()
-    return {"sectors": [dict(row._mapping) for row in rows]}
+    sectors = [dict(row._mapping) for row in rows]
+    return {
+        "sectors": sectors,
+        "trading_date": sectors[0]["trading_date"] if sectors else None,
+        **_sector_source_meta(True),
+    }
 
 @router.post("/sync-eod")
 async def trigger_sync_eod():
@@ -316,6 +393,7 @@ def get_market_snapshot(db: Session = Depends(get_db)):
             "breadth_yellow": _to_int(s.breadth_yellow if s.breadth_yellow is not None else derived.get("breadth_yellow")),
             "breadth_ceiling": _to_int(s.breadth_ceiling),
             "breadth_floor": _to_int(s.breadth_floor),
+            **_market_source_meta(False),
         }
 
     from src.cache.state import MARKET_DATA
@@ -364,7 +442,8 @@ def get_market_snapshot(db: Session = Depends(get_db)):
             "breadth_ceiling": _to_int(vnindex_live.get("breadth_ceiling") if vnindex_live.get("breadth_ceiling") is not None else db_payload.get("breadth_ceiling")),
             "breadth_floor": _to_int(vnindex_live.get("breadth_floor") if vnindex_live.get("breadth_floor") is not None else db_payload.get("breadth_floor")),
             "status": "LIVE",
-            "history": vnindex_history
+            "history": vnindex_history,
+            **_market_source_meta(True),
         }
     elif display_snapshot:
         vnindex = _snapshot_dict(display_snapshot)
@@ -380,7 +459,15 @@ def get_market_snapshot(db: Session = Depends(get_db)):
         .filter((ForeignTrading.f_buy_val != 0) | (ForeignTrading.f_sell_val != 0) | (ForeignTrading.net_val != 0))
         .scalar()
     )
-    foreign = {"top_buy": [], "top_sell": [], "total_net_val": 0.0}
+    foreign = {
+        "top_buy": [],
+        "top_sell": [],
+        "total_net_val": 0.0,
+        "source": "NO_DATA",
+        "source_label": "Chưa có dữ liệu",
+        "trading_date": None,
+        "is_eod": False,
+    }
     if ft_date:
         top_buy = (
             db.query(ForeignTrading)
@@ -398,7 +485,13 @@ def get_market_snapshot(db: Session = Depends(get_db)):
         )
         b = float(db.execute(text("SELECT SUM(f_buy_val) FROM foreign_trading WHERE trading_date = :d"), {"d": ft_date}).scalar() or 0)
         s = float(db.execute(text("SELECT SUM(f_sell_val) FROM foreign_trading WHERE trading_date = :d"), {"d": ft_date}).scalar() or 0)
-        foreign = {"top_buy": top_buy, "top_sell": top_sell, "total_net_val": b - s}
+        foreign = {
+            "top_buy": top_buy,
+            "top_sell": top_sell,
+            "total_net_val": b - s,
+            "trading_date": ft_date,
+            **_foreign_source_meta(ft_date),
+        }
 
     # 3. Top Impact
     active_date = get_active_session_date(db)
@@ -462,6 +555,7 @@ def get_market_snapshot(db: Session = Depends(get_db)):
             "positive": [r for r in fallback_rows if (r.get("impact_value") or 0) > 0][:10],
             "negative": [r for r in reversed(fallback_rows) if (r.get("impact_value") or 0) < 0][:10],
         }
+    impact.update({"trading_date": active_date, **_impact_source_meta()})
 
     # 4. Sector Performance
     sector_query = text("""
@@ -475,6 +569,7 @@ def get_market_snapshot(db: Session = Depends(get_db)):
         sectors = [dict(r._mapping) for r in db.execute(sector_query).fetchall()]
     except Exception:
         sectors = []
+    sectors_from_view = bool(sectors)
     if not sectors:
         reverse_sector = {}
         for sector, symbols in SECTOR_MAPPING.items():
@@ -525,6 +620,12 @@ def get_market_snapshot(db: Session = Depends(get_db)):
         "foreign": foreign,
         "impact": impact,
         "sectors": sectors,
+        "sources": {
+            "vnindex": (vnindex or {}).get("source_label") if vnindex else "Chưa có dữ liệu",
+            "foreign": foreign.get("source_label"),
+            "impact": impact.get("source_label"),
+            "sectors": _sector_source_meta(sectors_from_view)["source_label"],
+        },
         "server_time": datetime.now().isoformat()
     }
 

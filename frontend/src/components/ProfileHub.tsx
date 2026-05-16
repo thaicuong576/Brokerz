@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
-import { Key, Copy, Check, Users, ShieldAlert, Sparkles, Send, ShieldCheck, User as UserIcon, Zap, Target } from "lucide-react";
-import { apiService } from "@/lib/api";
-import { supabase } from "@/lib/supabase";
+import { useEffect, useState } from "react";
+import { Check, Copy, Key, Send, ShieldCheck, Sparkles, Target, User as UserIcon } from "lucide-react";
 
-export function ProfileHub({ isBroker, user, profile: initialProfile }: { isBroker: boolean, user: any, profile?: any }) {
+import { apiService } from "@/lib/api";
+
+export function ProfileHub({ isBroker, user, profile: initialProfile }: { isBroker: boolean; user: any; profile?: any }) {
   const [profile, setProfile] = useState<any>(initialProfile || null);
   const [soulKey, setSoulKey] = useState("");
   const [copied, setCopied] = useState(false);
@@ -20,21 +19,14 @@ export function ProfileHub({ isBroker, user, profile: initialProfile }: { isBrok
 
   const fetchProfile = async () => {
     if (!user) return;
-    const data = await apiService.getProfile(user.id || 'mock-id', isBroker ? 'broker' : 'investor');
-
-    if (data) {
-      setProfile(data);
-      if (isBroker) {
-        setSoulKey(data.soul_key || "");
-      } else {
-        setLinkedBroker(data.linked_broker_id || null);
-      }
-    }
+    const data = await apiService.getProfile(user.id || "mock-id", isBroker ? "broker" : "investor");
+    if (!data) return;
+    setProfile(data);
+    if (isBroker) setSoulKey(data.soul_key || "");
+    else setLinkedBroker(data.linked_broker_id || null);
   };
 
   const authorizeIdentity = async () => {
-    // Backend đã tự động tạo SoulKey khi profile.role === 'BROKER'
-    // nên ta chỉ cần fetch lại để lấy key đó về
     await fetchProfile();
   };
 
@@ -50,13 +42,13 @@ export function ProfileHub({ isBroker, user, profile: initialProfile }: { isBrok
       const result = await apiService.linkBroker(user.id, inputKey);
       if (result.status === "success") {
         setLinkedBroker(inputKey);
-        window.location.reload(); 
+        window.location.reload();
       } else {
-        alert("Invalid SoulKey. Please verify with your Broker.");
+        alert("SoulKey không hợp lệ. Vui lòng kiểm tra lại với broker.");
       }
     } catch (err) {
-      console.error("Linking error:", err);
-      alert("Invalid SoulKey. Please verify with your Broker.");
+      console.error("Không kích hoạt được SoulKey", err);
+      alert("SoulKey không hợp lệ. Vui lòng kiểm tra lại với broker.");
     } finally {
       setIsLinking(false);
     }
@@ -68,158 +60,140 @@ export function ProfileHub({ isBroker, user, profile: initialProfile }: { isBrok
       setLinkedBroker(null);
       window.location.reload();
     } catch (err) {
-      console.error("Unlink failed:", err);
+      console.error("Không ngắt kết nối được", err);
       window.location.reload();
     }
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Role Identity Card */}
-      <div className="glass rounded-[32px] border border-white/5 p-8 relative overflow-hidden">
-        <div className={`absolute top-0 right-0 p-8 opacity-5 ${isBroker ? 'text-primary' : 'text-blue-500'}`}>
-          <UserIcon className="w-32 h-32" />
-        </div>
-        
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <section className="relative overflow-hidden rounded-lg border border-panel-border bg-panel p-8 shadow-md">
         <div className="relative z-10">
-          <div className="flex items-center gap-4 mb-8">
-            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center border border-white/10 ${isBroker ? 'bg-primary/10 text-primary' : 'bg-blue-500/10 text-blue-400'}`}>
-              <UserIcon className="w-8 h-8" />
+          <div className="mb-8 flex items-center gap-4">
+            <div className="flex h-16 w-16 items-center justify-center rounded border border-panel-border bg-primary/10 text-primary">
+              <UserIcon className="h-8 w-8" />
             </div>
             <div>
-              <h3 className="text-xl font-black uppercase tracking-tighter">
-                {isBroker ? "Master Broker" : "Elite Investor"}
+              <h3 className="text-xl font-bold text-zinc-100">
+                {isBroker ? "Hồ sơ broker" : "Hồ sơ nhà đầu tư"}
               </h3>
-              <p className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.2em]">
-                {user?.email || "anonymous@brokez.com"}
+              <p className="text-[10px] font-bold uppercase text-zinc-500">
+                {user?.email || "anonymous@brokerz.vn"}
               </p>
             </div>
           </div>
 
           <div className="space-y-4">
-            <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
-              <div className="text-[9px] text-muted-foreground uppercase font-black tracking-widest mb-1">Account Security</div>
-              <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
-                <ShieldCheck className="w-4 h-4" /> 2FA ENCRYPTED
+            <div className="rounded border border-panel-border bg-zinc-950 p-4">
+              <div className="mb-1 text-[9px] font-bold uppercase text-zinc-500">Bảo mật tài khoản</div>
+              <div className="flex items-center gap-2 text-xs font-bold text-market-up">
+                <ShieldCheck className="h-4 w-4" />
+                Đăng nhập qua Supabase
               </div>
             </div>
-            <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
-              <div className="text-[9px] text-muted-foreground uppercase font-black tracking-widest mb-1">Network Priority</div>
-              <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
-                <Zap className="w-4 h-4" /> ULTRA-LOW LATENCY
+            <div className="rounded border border-panel-border bg-zinc-950 p-4">
+              <div className="mb-1 text-[9px] font-bold uppercase text-zinc-500">Phạm vi truy cập</div>
+              <div className="text-xs font-bold text-primary">
+                {isBroker ? "Sở hữu workspace" : linkedBroker ? "Đã tham gia workspace" : "Chờ SoulKey"}
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Connection & SoulKey Section */}
-      <div className="lg:col-span-2 glass rounded-[32px] border border-white/5 p-8 relative overflow-hidden">
-        <div className="absolute top-0 right-0 p-6 opacity-10">
-          <Key className="w-24 h-24" />
+      <section className="relative overflow-hidden rounded-lg border border-panel-border bg-panel p-8 shadow-md lg:col-span-2">
+        <div className="absolute right-0 top-0 p-6 opacity-10">
+          <Key className="h-24 w-24" />
         </div>
 
-        <div className="relative z-10 h-full flex flex-col">
-          <div className="flex items-center gap-3 mb-6">
-            <div className={`p-2 rounded-xl ${isBroker ? 'bg-primary/20 text-primary' : 'bg-blue-500/20 text-blue-400'}`}>
-              <Sparkles className="w-5 h-5" />
+        <div className="relative z-10 flex h-full flex-col">
+          <div className="mb-6 flex items-center gap-3">
+            <div className="rounded bg-primary/10 p-2 text-primary">
+              <Sparkles className="h-5 w-5" />
             </div>
-            <h3 className="text-xl font-black uppercase tracking-tighter">
-              {isBroker ? "Định danh Chuyên gia" : "Kết nối Chiến lược"}
+            <h3 className="text-xl font-bold text-zinc-100">
+              {isBroker ? "Định danh broker" : "Kết nối bằng SoulKey"}
             </h3>
           </div>
 
           {isBroker ? (
-            <div className="space-y-6 flex-1">
-              <p className="text-sm text-muted-foreground font-medium max-w-md italic">
-                Đây là chữ ký chuyên nghiệp duy nhất của bạn. Nhà đầu tư sử dụng mã này để theo dõi các chiến lược tổ chức của bạn.
+            <div className="flex flex-1 flex-col gap-6">
+              <p className="max-w-md text-sm leading-6 text-zinc-400">
+                SoulKey là mã mời vào workspace của broker. Nhà đầu tư chỉ xem được dashboard, danh mục và nhận định sau khi tham gia bằng mã này.
               </p>
 
               {soulKey ? (
                 <div className="flex items-center gap-2">
-                  <div className="flex-1 bg-white/5 border border-white/10 rounded-2xl p-5 text-2xl font-black tracking-[0.2em] text-primary flex items-center justify-center font-mono">
+                  <div className="flex flex-1 items-center justify-center rounded border border-panel-border bg-zinc-950 p-5 font-mono text-xl font-bold tracking-[0.18em] text-primary">
                     {soulKey}
                   </div>
-                  <button 
+                  <button
                     onClick={copyToClipboard}
-                    className="h-[68px] w-[68px] glass rounded-2xl flex items-center justify-center hover:bg-white/10 transition-all text-primary border border-primary/20"
+                    className="flex h-[66px] w-[66px] items-center justify-center rounded border border-primary/20 bg-primary/10 text-primary transition-colors hover:bg-primary/20"
+                    title="Sao chép SoulKey"
                   >
-                    {copied ? <Check className="w-6 h-6" /> : <Copy className="w-6 h-6" />}
+                    {copied ? <Check className="h-6 w-6" /> : <Copy className="h-6 w-6" />}
                   </button>
                 </div>
               ) : (
-                <button 
+                <button
                   onClick={authorizeIdentity}
-                  className="w-full py-5 bg-primary text-black rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-primary/20"
+                  className="w-full rounded bg-primary py-4 text-xs font-bold uppercase text-zinc-950 transition-colors hover:bg-primary-hover"
                 >
-                  Kích hoạt Định danh Chuyên gia
+                  Tải SoulKey hiện tại
                 </button>
               )}
 
-              <div className="flex items-center gap-6 pt-4 border-t border-white/5 mt-auto">
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">Liên kết Active</span>
-                  <span className="text-lg font-black text-white">08</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">Trust Rating</span>
-                  <span className="text-lg font-black text-emerald-400">99.8%</span>
-                </div>
+              <div className="mt-auto grid grid-cols-2 gap-4 border-t border-panel-border pt-4">
+                <Metric label="Trạng thái" value="Đang hoạt động" />
+                <Metric label="Nguồn quyền truy cập" value="Workspace" />
               </div>
             </div>
           ) : (
-            <div className="space-y-6 flex-1">
+            <div className="flex flex-1 flex-col gap-6">
               {linkedBroker ? (
                 <div className="space-y-6">
-                  <div className="bg-emerald-500/10 border border-emerald-500/20 p-6 rounded-2xl">
-                    <div className="flex items-center gap-3 text-emerald-400 font-black uppercase text-xs tracking-widest mb-3">
-                      <ShieldCheck className="w-5 h-5" /> Đã kết nối an toàn
+                  <div className="rounded border border-market-up/20 bg-market-up/10 p-6">
+                    <div className="mb-3 flex items-center gap-3 text-xs font-bold uppercase text-market-up">
+                      <ShieldCheck className="h-5 w-5" />
+                      Đã kết nối an toàn
                     </div>
-                    <p className="text-sm text-muted-foreground font-medium mb-4">
-                      Bạn đang theo dõi chiến lược của Master Broker: <span className="text-white font-black">{profile?.broker_name || "Institutional"}</span>
+                    <p className="mb-4 text-sm leading-6 text-zinc-400">
+                      Bạn đang theo dõi workspace của broker: <span className="font-bold text-zinc-100">{profile?.broker_name || "Brokerz"}</span>
                     </p>
-                    <div className="bg-white/5 p-4 rounded-xl font-mono text-white font-bold tracking-widest text-center border border-white/5">
+                    <div className="rounded border border-panel-border bg-zinc-950 p-4 text-center font-mono font-bold tracking-widest text-zinc-100">
                       {profile?.linked_broker_key || linkedBroker}
                     </div>
                   </div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
-                      <div className="text-[9px] text-muted-foreground uppercase font-black tracking-widest mb-1">Đồng bộ tín hiệu</div>
-                      <div className="text-emerald-400 font-bold text-xs uppercase">Tức thời</div>
-                    </div>
-                    <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
-                      <div className="text-[9px] text-muted-foreground uppercase font-black tracking-widest mb-1">Nguồn dữ liệu</div>
-                      <div className="text-blue-400 font-bold text-xs uppercase">Tổ chức</div>
-                    </div>
-                  </div>
 
-                  <button 
+                  <button
                     onClick={handleUnlink}
-                    className="mt-4 text-[10px] text-muted-foreground uppercase font-black tracking-widest hover:text-red-500 transition-colors flex items-center gap-2"
+                    className="flex items-center gap-2 text-[10px] font-bold uppercase text-zinc-500 transition-colors hover:text-market-down"
                   >
-                    <Target className="w-3 h-3" /> Ngắt kết nối chiến lược
+                    <Target className="h-3 w-3" />
+                    Ngắt kết nối workspace
                   </button>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <p className="text-sm text-muted-foreground font-medium italic">
-                    Để truy cập dữ liệu và tín hiệu từ chuyên gia, vui lòng nhập SoulKey được cung cấp bởi Broker của bạn.
+                  <p className="text-sm leading-6 text-zinc-400">
+                    Nhập SoulKey được broker cung cấp để xem dashboard, nhận định thị trường và danh mục được công bố.
                   </p>
                   <div className="flex items-center gap-2">
-                    <input 
+                    <input
                       type="text"
                       value={inputKey}
-                      onChange={(e) => setInputKey(e.target.value.toUpperCase())}
+                      onChange={(event) => setInputKey(event.target.value.toUpperCase())}
                       placeholder="BKZ-XXXX-XXXX"
-                      className="flex-1 bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold tracking-widest focus:outline-none focus:border-blue-500/50"
+                      className="flex-1 rounded border border-panel-border bg-zinc-950 p-4 text-sm font-bold tracking-widest text-zinc-100 outline-none transition-colors focus:border-primary"
                     />
-                    <button 
+                    <button
                       onClick={handleLink}
                       disabled={isLinking || !inputKey}
-                      className="h-[62px] w-[62px] bg-blue-600 text-white rounded-2xl flex items-center justify-center hover:bg-blue-500 transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50"
+                      className="flex h-[58px] w-[58px] items-center justify-center rounded bg-primary text-zinc-950 transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+                      title="Kích hoạt SoulKey"
                     >
-                      <Send className="w-5 h-5" />
+                      <Send className="h-5 w-5" />
                     </button>
                   </div>
                 </div>
@@ -227,7 +201,16 @@ export function ProfileHub({ isBroker, user, profile: initialProfile }: { isBrok
             </div>
           )}
         </div>
-      </div>
+      </section>
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded border border-panel-border bg-zinc-950 p-4">
+      <div className="mb-1 text-[9px] font-bold uppercase text-zinc-500">{label}</div>
+      <div className="text-xs font-bold text-zinc-100">{value}</div>
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { ErrorCard } from "@/components/ui/error-card";
 export default function SectorHeatmap() {
   const { data, isLoading, error, mutate } = useSectorPerformance();
 
-  if (error) return <ErrorCard message="Failed to load Sector Performance" onRetry={mutate} />;
+  if (error) return <ErrorCard message="Không tải được diễn biến nhóm ngành" onRetry={mutate} />;
 
   if (isLoading || !data) return (
     <div className="bg-panel border border-zinc-800 rounded-lg shadow-md p-4 h-full flex flex-col gap-4">

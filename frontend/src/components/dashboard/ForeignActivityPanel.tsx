@@ -17,11 +17,9 @@ export default function ForeignActivityPanel({ isBroker = false }: { isBroker?: 
 
     if (isEarly) {
       const confirmed = confirm(
-        "Thi truong chua ket thuc ATC (truoc 15:10). Du lieu co the lech. Ban van muon tiep tuc?"
+        "Thị trường chưa kết thúc phiên ATC. Dữ liệu khối ngoại có thể chưa đầy đủ. Bạn vẫn muốn đồng bộ?"
       );
-      if (!confirmed) {
-        return;
-      }
+      if (!confirmed) return;
     }
 
     try {
@@ -29,20 +27,18 @@ export default function ForeignActivityPanel({ isBroker = false }: { isBroker?: 
       await api.post("/sync-eod");
       mutateSync();
     } catch (err) {
-      alert(`Loi khoi dong sync: ${err}`);
+      alert(`Không khởi động được đồng bộ: ${err}`);
     } finally {
       setIsSyncing(false);
     }
   };
 
-  if (isLoading) {
-    return <div className="h-48 animate-pulse rounded-lg border border-panel-border bg-panel" />;
-  }
+  if (isLoading) return <div className="h-48 animate-pulse rounded-lg border border-panel-border bg-panel" />;
 
   if (error || !data) {
     return (
-      <div className="flex h-48 items-center justify-center rounded-lg border border-panel-border bg-panel text-red-500">
-        Failed to load data
+      <div className="flex h-48 items-center justify-center rounded-lg border border-panel-border bg-panel text-market-down">
+        Không tải được dữ liệu khối ngoại
       </div>
     );
   }
@@ -52,28 +48,28 @@ export default function ForeignActivityPanel({ isBroker = false }: { isBroker?: 
   const isIntraday = syncStatus?.type === "INTRADAY" && syncStatus?.status === "completed";
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-lg border border-panel-border bg-panel shadow-xl">
+    <div className="flex h-full flex-col overflow-hidden rounded-lg border border-panel-border bg-panel shadow-md">
       <div className="flex items-start justify-between border-b border-panel-border bg-[#1a1a1a] p-4">
         <div>
           <div className="flex items-center gap-2">
-            <h3 className="font-bold text-gray-200">Khoi ngoai Mua/Ban</h3>
+            <h3 className="font-bold text-zinc-200">Khối ngoại mua/bán</h3>
             {isEOD && (
               <span className="rounded border border-market-up/20 bg-market-up/10 px-1.5 py-0.5 text-[10px] font-bold text-market-up">
-                EOD CHOT
+                Đã chốt EOD
               </span>
             )}
             {isIntraday && (
-              <span className="rounded border border-market-up/20 bg-market-up/10 px-1.5 py-0.5 text-[10px] font-bold italic text-market-up">
-                TAM THOI
+              <span className="rounded border border-market-ref/20 bg-market-ref/10 px-1.5 py-0.5 text-[10px] font-bold text-market-ref">
+                Tạm thời
               </span>
             )}
           </div>
           <div className="mt-1 flex items-center gap-1.5 text-[10px] text-amber-300">
             <Clock3 className="h-3 w-3" />
-            <span>Du lieu SSI, do tre uoc tinh khoang 8 phut</span>
+            <span>DNSE cập nhật nhanh, SSI bổ sung dữ liệu EOD sau khoảng 7-8 phút</span>
           </div>
           {data.top_buy.length > 0 && (
-            <span className="font-mono text-[10px] text-zinc-500">Session: {data.top_buy[0].trading_date}</span>
+            <span className="text-[10px] text-zinc-500">Phiên: {data.top_buy[0].trading_date}</span>
           )}
         </div>
 
@@ -81,15 +77,15 @@ export default function ForeignActivityPanel({ isBroker = false }: { isBroker?: 
           <button
             onClick={handleSync}
             disabled={isRunning || isSyncing}
-            className={`rounded px-3 py-1.5 text-xs font-black tracking-tight shadow-lg transition-all ${
+            className={`rounded px-3 py-1.5 text-xs font-bold shadow transition-all ${
               isRunning
                 ? "cursor-not-allowed bg-zinc-800 text-zinc-500"
                 : isEOD
                   ? "bg-market-up text-black"
-                  : "border border-market-up/30 bg-market-up/20 text-market-up hover:bg-market-up/30"
+                  : "border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20"
             }`}
           >
-            {isRunning ? "Dang sync..." : isEOD ? "Da chot EOD" : "Chot EOD Sync"}
+            {isRunning ? "Đang đồng bộ..." : isEOD ? "Đã chốt EOD" : "Đồng bộ EOD"}
           </button>
         )}
       </div>
@@ -98,13 +94,13 @@ export default function ForeignActivityPanel({ isBroker = false }: { isBroker?: 
         <div className="bg-[#1a1a1a] px-4 pb-3">
           <div className="mb-1 flex justify-between text-[10px]">
             <span className="text-zinc-400">
-              Dang quet {syncStatus.type}: {syncStatus.processed}/{syncStatus.total} ma
+              Đang quét {syncStatus.type}: {syncStatus.processed}/{syncStatus.total} mã
             </span>
-            <span className="font-mono text-market-up">~{Math.round(syncStatus.eta_seconds / 60)} phut</span>
+            <span className="text-market-up">~{Math.round(syncStatus.eta_seconds / 60)} phút</span>
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-zinc-800">
             <div
-              className="h-full bg-market-up shadow-[0_0_10px_rgba(34,197,94,0.5)] transition-all duration-500"
+              className="h-full bg-market-up transition-all duration-500"
               style={{ width: `${(syncStatus.processed / syncStatus.total) * 100}%` }}
             />
           </div>
@@ -113,19 +109,19 @@ export default function ForeignActivityPanel({ isBroker = false }: { isBroker?: 
 
       <div className="flex-1 divide-y divide-panel-border">
         <div className="p-3">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-tight text-market-up">Top Mua</div>
+          <div className="mb-2 text-xs font-semibold uppercase text-market-up">Mua ròng</div>
           <div className="space-y-2">
             {data.top_buy.slice(0, 6).map((item) => (
               <div key={item.symbol} className="flex items-center justify-between text-sm">
-                <span className="w-12 font-bold text-gray-300">{item.symbol}</span>
+                <span className="w-12 font-bold text-zinc-300">{item.symbol}</span>
                 <div className="mx-3 h-1.5 flex-1 overflow-hidden rounded-full bg-[#262626]">
                   <div
                     className="h-full bg-market-up opacity-80"
                     style={{ width: `${Math.min((item.net_val / 1e9 / 600) * 100, 100)}%` }}
                   />
                 </div>
-                <span className="tabular-nums text-right font-medium text-market-up">
-                  {(item.net_val / 1e9).toFixed(2)} Ty
+                <span className="text-right font-medium tabular-nums text-market-up">
+                  {(item.net_val / 1e9).toFixed(2)} tỷ
                 </span>
               </div>
             ))}
@@ -133,19 +129,19 @@ export default function ForeignActivityPanel({ isBroker = false }: { isBroker?: 
         </div>
 
         <div className="p-3">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-tight text-market-down">Top Ban</div>
+          <div className="mb-2 text-xs font-semibold uppercase text-market-down">Bán ròng</div>
           <div className="space-y-2">
             {data.top_sell.slice(0, 6).map((item) => (
               <div key={item.symbol} className="flex items-center justify-between text-sm">
-                <span className="w-12 font-bold text-gray-300">{item.symbol}</span>
+                <span className="w-12 font-bold text-zinc-300">{item.symbol}</span>
                 <div className="mx-3 flex h-1.5 flex-1 justify-end overflow-hidden rounded-full bg-[#262626]">
                   <div
                     className="h-full bg-market-down opacity-80"
                     style={{ width: `${Math.min((Math.abs(item.net_val / 1e9) / 600) * 100, 100)}%` }}
                   />
                 </div>
-                <span className="tabular-nums text-right font-medium text-market-down">
-                  {(item.net_val / 1e9).toFixed(2)} Ty
+                <span className="text-right font-medium tabular-nums text-market-down">
+                  {(item.net_val / 1e9).toFixed(2)} tỷ
                 </span>
               </div>
             ))}

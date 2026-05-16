@@ -7,7 +7,7 @@ export default function MarketOverviewCard() {
   const { data, isLoading, error } = useMarketOverview();
 
   if (isLoading) return <div className="h-32 bg-panel animate-pulse rounded-lg border border-panel-border"></div>;
-  if (error || !data) return <div className="h-32 bg-panel rounded-lg border border-panel-border flex items-center justify-center text-red-500">Failed to load data</div>;
+  if (error || !data) return <div className="h-32 bg-panel rounded-lg border border-panel-border flex items-center justify-center text-market-down">Không tải được dữ liệu</div>;
 
   const isUp = (data.change_point ?? 0) >= 0;
 

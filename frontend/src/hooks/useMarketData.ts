@@ -17,6 +17,8 @@ export interface MarketOverview {
   breadth_yellow: number | null;
   breadth_ceiling: number | null;
   breadth_floor: number | null;
+  source?: string;
+  source_label?: string;
 }
 
 export interface ImpactMetric {
@@ -31,6 +33,9 @@ export interface ImpactMetric {
 export interface TopImpactData {
   positive: ImpactMetric[];
   negative: ImpactMetric[];
+  source?: string;
+  source_label?: string;
+  trading_date?: string;
 }
 
 export interface SectorPerformanceMetric {
@@ -43,6 +48,9 @@ export interface SectorPerformanceMetric {
 
 export interface SectorPerformanceData {
   sectors: SectorPerformanceMetric[];
+  source?: string;
+  source_label?: string;
+  trading_date?: string;
 }
 
 export interface ForeignTradeMetric {
@@ -57,6 +65,10 @@ export interface ForeignTradingData {
   top_buy: ForeignTradeMetric[];
   top_sell: ForeignTradeMetric[];
   total_net_val: number;
+  source?: string;
+  source_label?: string;
+  trading_date?: string;
+  is_eod?: boolean;
 }
 
 export interface SyncStatusData {

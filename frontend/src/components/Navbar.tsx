@@ -1,28 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { 
-  Activity, 
-  Layout, 
-  BarChart3, 
-  User, 
-  Bell, 
-  ChevronDown, 
-  ShieldCheck,
-  Zap,
-  Globe,
-  LogOut,
-  HelpCircle,
-  Check,
-  CheckCheck,
-  TrendingUp,
-  MessageCircle,
-  Clock
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-import { apiService } from "@/lib/api";
+import { Activity, BarChart3, Bell, CheckCheck, Clock, HelpCircle, Layout, LogOut, MessageCircle, TrendingUp, User } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
+
+import { apiService } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 interface NavbarProps {
   activeTab: string;
@@ -32,7 +16,7 @@ interface NavbarProps {
   user?: any;
 }
 
-export function Navbar({ activeTab, setActiveTab, isBroker, onLogout, user }: NavbarProps) {
+export function Navbar({ activeTab, isBroker, onLogout, user }: NavbarProps) {
   const [isScrolled, setIsScrolled] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -40,19 +24,16 @@ export function Navbar({ activeTab, setActiveTab, isBroker, onLogout, user }: Na
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 20);
-    };
+    const handleScroll = () => setIsScrolled(window.scrollY > 20);
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
   useEffect(() => {
-    if (user?.id) {
-      loadNotifications();
-      const interval = setInterval(loadNotifications, 30000); // Poll every 30s
-      return () => clearInterval(interval);
-    }
+    if (!user?.id) return;
+    loadNotifications();
+    const interval = setInterval(loadNotifications, 30000);
+    return () => clearInterval(interval);
   }, [user?.id]);
 
   useEffect(() => {
@@ -70,90 +51,89 @@ export function Navbar({ activeTab, setActiveTab, isBroker, onLogout, user }: Na
       const data = await apiService.getNotifications(user.id);
       if (Array.isArray(data)) {
         setNotifications(data);
-        setUnreadCount(data.filter((n: any) => !n.is_read).length);
+        setUnreadCount(data.filter((item: any) => !item.is_read).length);
       }
     } catch (err) {
-      console.error("Failed to load notifications:", err);
+      console.error("Không tải được thông báo", err);
     }
   };
 
   const handleMarkAsRead = async (id: string) => {
     try {
       await apiService.markNotificationRead(id);
-      setNotifications(notifications.map(n => n.id === id ? { ...n, is_read: true } : n));
-      setUnreadCount(prev => Math.max(0, prev - 1));
+      setNotifications((items) => items.map((item) => (item.id === id ? { ...item, is_read: true } : item)));
+      setUnreadCount((value) => Math.max(0, value - 1));
     } catch (err) {
-      console.error("Failed to mark as read:", err);
+      console.error("Không đánh dấu được thông báo", err);
     }
   };
 
   const handleMarkAllAsRead = async () => {
     try {
       await apiService.markAllNotificationsRead(user.id);
-      setNotifications(notifications.map(n => ({ ...n, is_read: true })));
+      setNotifications((items) => items.map((item) => ({ ...item, is_read: true })));
       setUnreadCount(0);
     } catch (err) {
-      console.error("Failed to mark all as read:", err);
+      console.error("Không đánh dấu được tất cả thông báo", err);
     }
   };
 
   const getNotifIcon = (type: string) => {
     switch (type) {
-      case "RECOMMENDATION": return <TrendingUp className="w-4 h-4 text-primary" />;
-      case "INQUIRY_REPLY": return <MessageCircle className="w-4 h-4 text-blue-400" />;
-      default: return <Bell className="w-4 h-4 text-muted-foreground" />;
+      case "RECOMMENDATION":
+        return <TrendingUp className="h-4 w-4 text-primary" />;
+      case "INQUIRY_REPLY":
+        return <MessageCircle className="h-4 w-4 text-primary" />;
+      default:
+        return <Bell className="h-4 w-4 text-zinc-500" />;
     }
   };
 
-  const displayName = user?.user_metadata?.full_name?.split(' ').slice(-2).join(' ') || user?.user_metadata?.given_name || user?.email?.split('@')[0] || "User";
+  const displayName =
+    user?.user_metadata?.full_name?.split(" ").slice(-2).join(" ") ||
+    user?.user_metadata?.given_name ||
+    user?.email?.split("@")[0] ||
+    "Người dùng";
   const roleLabel = isBroker ? "Broker" : "Nhà đầu tư";
 
   const tabs = [
-    { id: 'intelligence', label: 'Thị trường', icon: BarChart3 },
-    { id: 'portfolio', label: 'Danh Mục', icon: Layout },
-    { id: 'inquiry', label: 'Góc hỏi đáp', icon: HelpCircle },
-    { id: 'profile', label: 'Cá Nhân', icon: User },
+    { id: "intelligence", label: "Thị trường", icon: BarChart3 },
+    { id: "portfolio", label: "Danh mục", icon: Layout },
+    { id: "inquiry", label: "Hỏi đáp", icon: HelpCircle },
+    { id: "profile", label: "Cá nhân", icon: User },
   ];
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 flex justify-center pt-4 md:pt-6 px-4 md:px-6 pointer-events-none">
-      <div className={cn(
-        "flex items-center gap-4 md:gap-8 px-4 md:px-8 py-3 glass rounded-2xl md:rounded-[32px] border border-white/5 transition-all duration-500 pointer-events-auto shadow-2xl max-w-full",
-        isScrolled ? "scale-95 py-2" : "scale-100"
-      )}>
-        {/* LOGO SECTION */}
-        <div className="flex items-center gap-2 md:gap-3 pr-4 md:pr-6 border-r border-white/5 shrink-0">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-primary/50 flex items-center justify-center shadow-[0_0_20px_rgba(0,240,255,0.3)]">
-            <Activity className="w-5 h-5 text-black" />
+    <nav className="pointer-events-none fixed left-0 right-0 top-0 z-50 flex justify-center px-4 pt-4 md:px-6 md:pt-6">
+      <div
+        className={cn(
+          "pointer-events-auto flex max-w-full items-center gap-3 rounded-lg border border-panel-border bg-panel/95 px-4 py-3 shadow-2xl backdrop-blur md:gap-6 md:px-6",
+          isScrolled ? "scale-95 py-2" : "scale-100"
+        )}
+      >
+        <div className="flex shrink-0 items-center gap-3 border-r border-panel-border pr-4">
+          <div className="flex h-8 w-8 items-center justify-center rounded bg-primary">
+            <Activity className="h-5 w-5 text-zinc-950" />
           </div>
-          <div className="hidden sm:flex flex-col">
-            <span className="text-xl font-black tracking-tighter text-white uppercase italic leading-none">Brokez</span>
-          </div>
+          <span className="hidden text-lg font-bold text-zinc-100 sm:inline">Brokerz</span>
         </div>
 
-        {/* NAVIGATION TABS */}
-        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-1">
+        <div className="no-scrollbar flex items-center gap-1 overflow-x-auto py-1">
           {tabs.map((tab) => (
             <Link
               key={tab.id}
-              href={tab.id === 'intelligence' ? '/' : `/${tab.id}`}
+              href={tab.id === "intelligence" ? "/" : `/${tab.id}`}
               className={cn(
-                "relative flex items-center gap-2 px-3 md:px-5 py-2.5 rounded-2xl transition-all duration-300 group shrink-0",
-                activeTab === tab.id 
-                  ? "bg-primary text-black shadow-[0_0_20px_rgba(0,240,255,0.2)]" 
-                  : "text-muted-foreground hover:text-white hover:bg-white/5"
+                "relative flex shrink-0 items-center gap-2 rounded px-3 py-2.5 transition-colors md:px-4",
+                activeTab === tab.id ? "bg-primary text-zinc-950" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
               )}
             >
-              <tab.icon className={cn(
-                "w-4 h-4 transition-transform duration-300 group-hover:scale-110",
-                activeTab === tab.id ? "text-black" : "text-muted-foreground group-hover:text-primary"
-              )} />
-              <span className="text-[10px] font-black uppercase tracking-widest hidden lg:inline-block">{tab.label}</span>
-              
+              <tab.icon className="h-4 w-4" />
+              <span className="hidden text-[10px] font-bold uppercase lg:inline-block">{tab.label}</span>
               {activeTab === tab.id && (
                 <motion.div
                   layoutId="nav-active"
-                  className="absolute inset-0 bg-primary rounded-2xl -z-10"
+                  className="absolute inset-0 -z-10 rounded bg-primary"
                   transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
                 />
               )}
@@ -161,106 +141,96 @@ export function Navbar({ activeTab, setActiveTab, isBroker, onLogout, user }: Na
           ))}
         </div>
 
-        {/* STATUS & ACTIONS */}
-        <div className="flex items-center gap-2 md:gap-4 pl-4 md:pl-6 border-l border-white/5 shrink-0">
-          <div className="hidden md:flex flex-col items-end">
-            <div className="flex items-center gap-2">
-              <span className="text-[8px] font-black text-muted-foreground uppercase tracking-widest">XIN CHÀO,</span>
-              <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-            </div>
-            <span className="text-[10px] font-black text-white uppercase tracking-tight">{roleLabel} {displayName}</span>
+        <div className="flex shrink-0 items-center gap-2 border-l border-panel-border pl-4 md:gap-3">
+          <div className="hidden flex-col items-end md:flex">
+            <span className="text-[8px] font-bold uppercase text-zinc-500">Xin chào</span>
+            <span className="text-[10px] font-bold uppercase text-zinc-100">
+              {roleLabel} {displayName}
+            </span>
           </div>
-          
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={onLogout}
-              className="p-2 md:p-2.5 rounded-xl bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 transition-all group"
-              title="Log Out"
+
+          <button
+            onClick={onLogout}
+            className="rounded border border-market-down/20 bg-market-down/10 p-2 text-market-down transition-colors hover:bg-market-down/20"
+            title="Đăng xuất"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => setShowNotifications((value) => !value)}
+              className={cn(
+                "relative rounded border p-2 transition-colors",
+                showNotifications ? "border-primary/30 bg-primary/10 text-primary" : "border-panel-border bg-zinc-900 text-zinc-400 hover:text-zinc-100"
+              )}
+              title="Thông báo"
             >
-              <LogOut className="w-4 h-4" />
+              <Bell className="h-4 w-4" />
+              {unreadCount > 0 && (
+                <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-market-down" />
+              )}
             </button>
 
-            <div className="relative" ref={dropdownRef}>
-              <button 
-                onClick={() => setShowNotifications(!showNotifications)}
-                className={cn(
-                  "flex p-2 md:p-2.5 rounded-xl border transition-all relative",
-                  showNotifications ? "bg-primary/20 border-primary/30 text-primary" : "bg-white/5 text-muted-foreground border-white/5 hover:bg-white/10"
-                )}
-              >
-                <Bell className="w-4 h-4" />
-                {unreadCount > 0 && (
-                  <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-red-500 rounded-full border border-black animate-pulse" />
-                )}
-              </button>
-
-              <AnimatePresence>
-                {showNotifications && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    className="absolute right-0 mt-3 w-80 glass border border-white/10 rounded-[32px] shadow-2xl overflow-hidden z-[100]"
-                  >
-                    <div className="p-5 border-b border-white/5 flex items-center justify-between bg-white/5">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-white">Thông báo</span>
-                      {unreadCount > 0 && (
-                        <button 
-                          onClick={handleMarkAllAsRead}
-                          className="text-[9px] font-black uppercase tracking-widest text-primary hover:opacity-80 flex items-center gap-1"
+            <AnimatePresence>
+              {showNotifications && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.96 }}
+                  className="absolute right-0 z-[100] mt-3 w-80 overflow-hidden rounded-lg border border-panel-border bg-panel shadow-2xl"
+                >
+                  <div className="flex items-center justify-between border-b border-panel-border bg-zinc-900 p-4">
+                    <span className="text-[10px] font-bold uppercase text-zinc-100">Thông báo</span>
+                    {unreadCount > 0 && (
+                      <button
+                        onClick={handleMarkAllAsRead}
+                        className="flex items-center gap-1 text-[9px] font-bold uppercase text-primary hover:opacity-80"
+                      >
+                        <CheckCheck className="h-3 w-3" />
+                        Đọc tất cả
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-96 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <div className="p-10 text-center">
+                        <Bell className="mx-auto mb-3 h-8 w-8 text-zinc-700" />
+                        <p className="text-[10px] font-medium uppercase text-zinc-500">Không có thông báo mới</p>
+                      </div>
+                    ) : (
+                      notifications.map((item) => (
+                        <div
+                          key={item.id}
+                          onClick={() => handleMarkAsRead(item.id)}
+                          className={cn(
+                            "cursor-pointer border-b border-panel-border p-4 transition-colors hover:bg-zinc-900",
+                            !item.is_read && "bg-primary/5"
+                          )}
                         >
-                          <CheckCheck className="w-3 h-3" />
-                          Đọc tất cả
-                        </button>
-                      )}
-                    </div>
-                    <div className="max-h-96 overflow-y-auto scrollbar-thin">
-                      {notifications.length === 0 ? (
-                        <div className="p-10 text-center">
-                          <Bell className="w-8 h-8 text-white/5 mx-auto mb-3" />
-                          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest">Không có thông báo mới</p>
-                        </div>
-                      ) : (
-                        notifications.map((n) => (
-                          <div 
-                            key={n.id}
-                            onClick={() => handleMarkAsRead(n.id)}
-                            className={cn(
-                              "p-4 border-b border-white/5 hover:bg-white/5 transition-all cursor-pointer relative group",
-                              !n.is_read && "bg-primary/5"
-                            )}
-                          >
-                            <div className="flex gap-3">
-                              <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
-                                {getNotifIcon(n.type)}
-                              </div>
-                              <div className="flex-1">
-                                <p className="text-[11px] font-black text-white uppercase tracking-tight mb-0.5">{n.title}</p>
-                                <p className="text-[10px] text-muted-foreground font-medium leading-relaxed mb-2">{n.message}</p>
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-1.5 text-[8px] text-muted-foreground font-black uppercase tracking-widest">
-                                    <Clock className="w-2.5 h-2.5" />
-                                    {new Date(n.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                                  </div>
-                                  {!n.is_read && <div className="w-1.5 h-1.5 bg-primary rounded-full" />}
+                          <div className="flex gap-3">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-panel-border bg-zinc-900">
+                              {getNotifIcon(item.type)}
+                            </div>
+                            <div className="flex-1">
+                              <p className="mb-0.5 text-[11px] font-bold uppercase text-zinc-100">{item.title}</p>
+                              <p className="mb-2 text-[10px] leading-relaxed text-zinc-400">{item.message}</p>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5 text-[8px] font-bold uppercase text-zinc-500">
+                                  <Clock className="h-2.5 w-2.5" />
+                                  {new Date(item.created_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
                                 </div>
+                                {!item.is_read && <div className="h-1.5 w-1.5 rounded-full bg-primary" />}
                               </div>
                             </div>
                           </div>
-                        ))
-                      )}
-                    </div>
-                    {notifications.length > 0 && (
-                      <div className="p-4 bg-white/5 text-center">
-                        <button className="text-[9px] font-black uppercase tracking-widest text-muted-foreground hover:text-white transition-colors">
-                          Xem tất cả thông báo
-                        </button>
-                      </div>
+                        </div>
+                      ))
                     )}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </div>

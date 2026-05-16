@@ -104,7 +104,7 @@ class SyncManager:
                             except Exception:
                                 pass
                         
-                        target_date = iso_date if iso_date else task_id.replace("sync-", "")
+                        target_date = iso_date if iso_date else self.active_task["date"]
                         
                         if buy > 0 or sell > 0:
                             # MUST NOT USE immediate=True in an async loop! It will do a synchronous DB flush and block the event loop.

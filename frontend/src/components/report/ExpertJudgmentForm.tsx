@@ -158,10 +158,10 @@ export default function ExpertJudgmentForm({ onSubmit, isGenerating }: ExpertJud
       <button
         type="submit"
         disabled={isGenerating || isSyncing}
-        className="mt-auto inline-flex w-full items-center justify-center gap-2 rounded bg-orange-500 px-4 py-3 font-bold text-white shadow-lg transition-all hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+        className="mt-auto inline-flex w-full items-center justify-center gap-2 rounded bg-primary px-4 py-3 font-bold text-zinc-950 shadow-lg transition-all hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isGenerating || isSyncing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Wand2 className="h-5 w-5" />}
-        {isGenerating ? "Đang tạo bản nháp..." : isSyncing ? syncMessage : "Tạo bản nháp daily brief"}
+        {isGenerating ? "Đang tạo bản nháp..." : isSyncing ? syncMessage : "Tạo bản nháp nhận định"}
       </button>
     </form>
   );
