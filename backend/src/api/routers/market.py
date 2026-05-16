@@ -111,7 +111,16 @@ def get_system_status():
 @router.get("/overview", response_model=IndexOverviewResponse)
 def get_overview(db: Session = Depends(get_db)):
     """Lấy thông tin tổng quan điểm số mới nhất."""
-    snapshot = db.query(IndexSnapshot).order_by(desc(IndexSnapshot.trading_date)).first()
+    snapshot = (
+        db.query(IndexSnapshot)
+        .filter(
+            IndexSnapshot.symbol == "VNINDEX",
+            ((IndexSnapshot.total_volume.isnot(None)) & (IndexSnapshot.total_volume > 0))
+            | ((IndexSnapshot.total_value.isnot(None)) & (IndexSnapshot.total_value > 0)),
+        )
+        .order_by(desc(IndexSnapshot.trading_date))
+        .first()
+    ) or db.query(IndexSnapshot).order_by(desc(IndexSnapshot.trading_date)).first()
     if not snapshot:
         raise HTTPException(status_code=404, detail="No overview data found")
     return snapshot
@@ -259,6 +268,56 @@ def get_market_snapshot(db: Session = Depends(get_db)):
     Gom tất cả VNINDEX, Khối ngoại, Top Impact và Ngành vào 1 lần fetch duy nhất.
     """
     # 1. VNINDEX (Ưu tiên live cache, fallback DB)
+    def _to_float(value, default=0.0):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    def _to_int(value, default=0):
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return default
+
+    def _value_in_billion(value):
+        value = _to_float(value)
+        return value / 1_000_000_000 if abs(value) >= 1_000_000_000 else value
+
+    def _derive_from_prices(target_date):
+        if not target_date:
+            return {}
+        row = db.execute(text("""
+            SELECT
+                COALESCE(SUM(volume), 0) AS total_volume,
+                COALESCE(SUM(price * volume), 0) AS total_value,
+                SUM(CASE WHEN price > ref_price THEN 1 ELSE 0 END) AS breadth_green,
+                SUM(CASE WHEN price < ref_price THEN 1 ELSE 0 END) AS breadth_red,
+                SUM(CASE WHEN price = ref_price THEN 1 ELSE 0 END) AS breadth_yellow
+            FROM market_prices
+            WHERE trading_date = :dt
+        """), {"dt": target_date}).fetchone()
+        return dict(row._mapping) if row else {}
+
+    def _snapshot_dict(s):
+        if not s:
+            return {}
+        derived = _derive_from_prices(s.trading_date) if not s.total_volume or not s.total_value else {}
+        return {
+            "symbol": s.symbol,
+            "price": _to_float(s.point),
+            "change": _to_float(s.change_point),
+            "change_percent": _to_float(s.change_percent),
+            "trading_date": s.trading_date.isoformat(),
+            "total_volume": _to_int(s.total_volume or derived.get("total_volume")),
+            "total_value": _value_in_billion(s.total_value or derived.get("total_value")),
+            "breadth_green": _to_int(s.breadth_green if s.breadth_green is not None else derived.get("breadth_green")),
+            "breadth_red": _to_int(s.breadth_red if s.breadth_red is not None else derived.get("breadth_red")),
+            "breadth_yellow": _to_int(s.breadth_yellow if s.breadth_yellow is not None else derived.get("breadth_yellow")),
+            "breadth_ceiling": _to_int(s.breadth_ceiling),
+            "breadth_floor": _to_int(s.breadth_floor),
+        }
+
     from src.cache.state import MARKET_DATA
     vnindex_live = MARKET_DATA.get("VNINDEX")
     
@@ -277,52 +336,66 @@ def get_market_snapshot(db: Session = Depends(get_db)):
     } for s in reversed(history_snapshots)]
 
     latest_snapshot = history_snapshots[0] if history_snapshots else None
+    latest_complete_snapshot = (
+        db.query(IndexSnapshot)
+        .filter(
+            IndexSnapshot.symbol == "VNINDEX",
+            ((IndexSnapshot.total_volume.isnot(None)) & (IndexSnapshot.total_volume > 0))
+            | ((IndexSnapshot.total_value.isnot(None)) & (IndexSnapshot.total_value > 0)),
+        )
+        .order_by(desc(IndexSnapshot.trading_date))
+        .first()
+    )
+    display_snapshot = latest_complete_snapshot or latest_snapshot
 
     if vnindex_live:
+        db_payload = _snapshot_dict(display_snapshot)
         vnindex = {
             "symbol": "VNINDEX",
-            "price": vnindex_live.get("IndexValue", 0),
-            "change": vnindex_live.get("Change", 0),
-            "change_percent": vnindex_live.get("RatioChange", 0),
-            "trading_date": latest_snapshot.trading_date.isoformat() if latest_snapshot else datetime.now().date().isoformat(),
-            "total_volume": latest_snapshot.total_volume if latest_snapshot else 0,
-            "total_value": latest_snapshot.total_value if latest_snapshot else 0,
-            "breadth_green": latest_snapshot.breadth_green if latest_snapshot else 0,
-            "breadth_red": latest_snapshot.breadth_red if latest_snapshot else 0,
-            "breadth_yellow": latest_snapshot.breadth_yellow if latest_snapshot else 0,
-            "breadth_ceiling": latest_snapshot.breadth_ceiling if latest_snapshot else 0,
-            "breadth_floor": latest_snapshot.breadth_floor if latest_snapshot else 0,
+            "price": _to_float(vnindex_live.get("price") or vnindex_live.get("IndexValue") or db_payload.get("price")),
+            "change": _to_float(vnindex_live.get("change") or vnindex_live.get("Change") or db_payload.get("change")),
+            "change_percent": _to_float(vnindex_live.get("change_percent") or vnindex_live.get("RatioChange") or db_payload.get("change_percent")),
+            "trading_date": vnindex_live.get("trading_date") or db_payload.get("trading_date") or datetime.now().date().isoformat(),
+            "total_volume": _to_int(vnindex_live.get("total_volume") or db_payload.get("total_volume")),
+            "total_value": _value_in_billion(vnindex_live.get("total_value") or db_payload.get("total_value")),
+            "breadth_green": _to_int(vnindex_live.get("breadth_green") if vnindex_live.get("breadth_green") is not None else db_payload.get("breadth_green")),
+            "breadth_red": _to_int(vnindex_live.get("breadth_red") if vnindex_live.get("breadth_red") is not None else db_payload.get("breadth_red")),
+            "breadth_yellow": _to_int(vnindex_live.get("breadth_yellow") if vnindex_live.get("breadth_yellow") is not None else db_payload.get("breadth_yellow")),
+            "breadth_ceiling": _to_int(vnindex_live.get("breadth_ceiling") if vnindex_live.get("breadth_ceiling") is not None else db_payload.get("breadth_ceiling")),
+            "breadth_floor": _to_int(vnindex_live.get("breadth_floor") if vnindex_live.get("breadth_floor") is not None else db_payload.get("breadth_floor")),
             "status": "LIVE",
             "history": vnindex_history
         }
-    elif latest_snapshot:
-        s = latest_snapshot
-        vnindex = {
-            "symbol": s.symbol,
-            "price": s.point,
-            "change": s.change_point,
-            "change_percent": s.change_percent,
-            "trading_date": s.trading_date.isoformat(),
-            "total_volume": s.total_volume,
-            "total_value": s.total_value,
-            "breadth_green": s.breadth_green,
-            "breadth_red": s.breadth_red,
-            "breadth_yellow": s.breadth_yellow,
-            "breadth_ceiling": s.breadth_ceiling,
-            "breadth_floor": s.breadth_floor,
-            "status": "CLOSED",
-            "history": vnindex_history
-        }
+    elif display_snapshot:
+        vnindex = _snapshot_dict(display_snapshot)
+        vnindex["status"] = "CLOSED"
+        vnindex["history"] = vnindex_history
     else:
         vnindex = None
 
     # 2. Foreign Trade
     from sqlalchemy.sql import func
-    ft_date = db.query(func.max(ForeignTrading.trading_date)).scalar()
+    ft_date = (
+        db.query(func.max(ForeignTrading.trading_date))
+        .filter((ForeignTrading.f_buy_val != 0) | (ForeignTrading.f_sell_val != 0) | (ForeignTrading.net_val != 0))
+        .scalar()
+    )
     foreign = {"top_buy": [], "top_sell": [], "total_net_val": 0.0}
     if ft_date:
-        top_buy = db.query(ForeignTrading).filter(ForeignTrading.trading_date == ft_date).order_by(desc(ForeignTrading.net_val)).limit(5).all()
-        top_sell = db.query(ForeignTrading).filter(ForeignTrading.trading_date == ft_date).order_by(asc(ForeignTrading.net_val)).limit(5).all()
+        top_buy = (
+            db.query(ForeignTrading)
+            .filter(ForeignTrading.trading_date == ft_date, ForeignTrading.net_val > 0)
+            .order_by(desc(ForeignTrading.net_val))
+            .limit(10)
+            .all()
+        )
+        top_sell = (
+            db.query(ForeignTrading)
+            .filter(ForeignTrading.trading_date == ft_date, ForeignTrading.net_val < 0)
+            .order_by(asc(ForeignTrading.net_val))
+            .limit(10)
+            .all()
+        )
         b = float(db.execute(text("SELECT SUM(f_buy_val) FROM foreign_trading WHERE trading_date = :d"), {"d": ft_date}).scalar() or 0)
         s = float(db.execute(text("SELECT SUM(f_sell_val) FROM foreign_trading WHERE trading_date = :d"), {"d": ft_date}).scalar() or 0)
         foreign = {"top_buy": top_buy, "top_sell": top_sell, "total_net_val": b - s}
@@ -352,19 +425,39 @@ def get_market_snapshot(db: Session = Depends(get_db)):
         impact = {"positive": [], "negative": []}
     if not impact["positive"] and not impact["negative"]:
         fallback_query = text("""
+            WITH caps AS (
+                SELECT
+                    m.symbol,
+                    s.sector,
+                    m.price,
+                    m.ref_price,
+                    COALESCE(m.change_percent, CASE WHEN m.ref_price > 0 THEN ((m.price - m.ref_price) / m.ref_price) * 100 ELSE 0 END) AS change_percent,
+                    COALESCE(NULLIF(s.listed_shares, 0), 1) AS listed_shares,
+                    SUM(m.price * COALESCE(NULLIF(s.listed_shares, 0), 1)) OVER () AS total_market_cap
+                FROM market_prices m
+                LEFT JOIN stocks s ON m.symbol = s.symbol
+                WHERE m.trading_date = :dt
+                  AND m.price IS NOT NULL
+                  AND m.ref_price IS NOT NULL
+                  AND m.ref_price > 0
+            )
             SELECT
-                m.symbol,
-                s.sector,
-                m.price,
-                m.ref_price,
-                COALESCE(m.change_percent, CASE WHEN m.ref_price > 0 THEN ((m.price - m.ref_price) / m.ref_price) * 100 ELSE 0 END) AS change_percent,
-                (m.price - m.ref_price) AS impact_value
-            FROM market_prices m
-            LEFT JOIN stocks s ON m.symbol = s.symbol
-            WHERE m.trading_date = :dt AND m.price IS NOT NULL AND m.ref_price IS NOT NULL
+                symbol,
+                sector,
+                price,
+                ref_price,
+                change_percent,
+                (:vnindex_point * ((price * listed_shares) / NULLIF(total_market_cap, 0)) * ((price - ref_price) / ref_price)) AS impact_value
+            FROM caps
             ORDER BY impact_value DESC
         """)
-        fallback_rows = [dict(r._mapping) for r in db.execute(fallback_query, {"dt": active_date}).fetchall()]
+        fallback_rows = [
+            dict(r._mapping)
+            for r in db.execute(
+                fallback_query,
+                {"dt": active_date, "vnindex_point": (vnindex or {}).get("price") or 0},
+            ).fetchall()
+        ]
         impact = {
             "positive": [r for r in fallback_rows if (r.get("impact_value") or 0) > 0][:10],
             "negative": [r for r in reversed(fallback_rows) if (r.get("impact_value") or 0) < 0][:10],
@@ -389,17 +482,25 @@ def get_market_snapshot(db: Session = Depends(get_db)):
                 reverse_sector[symbol] = sector
 
         rows = db.execute(text("""
-            SELECT symbol, trading_date, change_percent
-            FROM market_prices
-            WHERE trading_date = :dt AND change_percent IS NOT NULL
+            SELECT
+                m.symbol,
+                m.trading_date,
+                COALESCE(m.change_percent, CASE WHEN m.ref_price > 0 THEN ((m.price - m.ref_price) / m.ref_price) * 100 ELSE 0 END) AS change_percent
+            FROM market_prices m
+            WHERE m.trading_date = :dt
+              AND m.price IS NOT NULL
+              AND m.ref_price IS NOT NULL
         """), {"dt": active_date}).fetchall()
 
         grouped = {}
+        leaders = {}
         for row in rows:
             sector = reverse_sector.get(row.symbol)
             if not sector:
                 continue
-            grouped.setdefault(sector, []).append(float(row.change_percent or 0))
+            change = float(row.change_percent or 0)
+            grouped.setdefault(sector, []).append(change)
+            leaders.setdefault(sector, []).append((row.symbol, change))
 
         sectors = sorted(
             [
@@ -408,6 +509,10 @@ def get_market_snapshot(db: Session = Depends(get_db)):
                     "sector": sector,
                     "avg_change": sum(values) / len(values),
                     "total_stocks": len(values),
+                    "top_symbols": ", ".join(
+                        symbol
+                        for symbol, _ in sorted(leaders.get(sector, []), key=lambda item: item[1], reverse=True)[:3]
+                    ),
                 }
                 for sector, values in grouped.items()
             ],

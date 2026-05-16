@@ -36,6 +36,7 @@ import {
 
 import { apiService } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import ReportGenerator from "@/components/report/ReportGenerator";
 
 type WidgetId =
   | "vnindex"
@@ -262,6 +263,8 @@ export function Dashboard({ isBroker = false }: { isBroker?: boolean }) {
           </div>
         )}
       </header>
+
+      <ReportGenerator isBroker={isBroker} />
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={layout.map((item) => item.instanceId)} strategy={rectSortingStrategy}>

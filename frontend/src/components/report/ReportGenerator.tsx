@@ -1,118 +1,269 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { Copy, FileText, Check, Bot } from "lucide-react";
+import { Bot, Check, Clock, Copy, Eye, Loader2, Send, Save } from "lucide-react";
 import ExpertJudgmentForm, { JudgmentData } from "./ExpertJudgmentForm";
-import api from "@/lib/api";
+import { apiService, type DailyBriefResponse } from "@/lib/api";
 
-// Helper to strip markdown for Zalo pasting
-const stripMarkdown = (md: string) => {
-  return md
-    .replace(/\*\*(.*?)\*\*/g, "$1") // bold
-    .replace(/\*(.*?)\*/g, "$1")     // italic
-    .replace(/__(.*?)__/g, "$1")     // bold
-    .replace(/_(.*?)_/g, "$1")       // italic
-    .replace(/#(.*?)\n/g, "$1\n")    // headers
-    .replace(/\[(.*?)\]\(.*?\)/g, "$1") // links
-    .replace(/`(.*?)`/g, "$1");      // inline code
-};
+const stripMarkdown = (markdown: string) =>
+  markdown
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/__(.*?)__/g, "$1")
+    .replace(/_(.*?)_/g, "$1")
+    .replace(/^#{1,6}\s*/gm, "")
+    .replace(/\[(.*?)\]\(.*?\)/g, "$1")
+    .replace(/`(.*?)`/g, "$1");
 
-export default function ReportGenerator() {
-  const [reportMarkdown, setReportMarkdown] = useState<string | null>(null);
+function formatDateTime(value?: string | null) {
+  if (!value) return "Chưa publish";
+  return new Date(value).toLocaleString("vi-VN", { dateStyle: "medium", timeStyle: "short" });
+}
+
+function LatestDailyBriefView() {
+  const [brief, setBrief] = useState<DailyBriefResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    apiService
+      .getLatestDailyBrief()
+      .then((data) => {
+        if (mounted) setBrief(data);
+      })
+      .catch((err) => {
+        console.error("Latest daily brief failed", err);
+        if (mounted) setBrief(null);
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-panel p-4 text-sm text-zinc-400">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Đang tải nhận định mới nhất...
+      </div>
+    );
+  }
+
+  if (!brief) {
+    return (
+      <div className="rounded-lg border border-zinc-800 bg-panel p-5">
+        <div className="text-[11px] font-black uppercase tracking-[0.22em] text-zinc-500">Daily Market Brief</div>
+        <h3 className="mt-1 text-lg font-bold text-zinc-100">Chưa có nhận định đã publish</h3>
+        <p className="mt-2 text-sm text-zinc-400">Bạn sẽ thấy bản nhận định thị trường sau khi broker duyệt và publish.</p>
+      </div>
+    );
+  }
+
+  return (
+    <section className="rounded-lg border border-zinc-800 bg-panel p-5 shadow-md">
+      <div className="flex flex-col gap-2 border-b border-zinc-800 pb-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="text-[11px] font-black uppercase tracking-[0.22em] text-zinc-500">Daily Market Brief</div>
+          <h3 className="mt-1 text-xl font-bold text-zinc-100">{brief.title}</h3>
+          <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-zinc-500">
+            <span>Broker: {brief.broker_name || "Brokerz"}</span>
+            <span>Publish: {formatDateTime(brief.published_at)}</span>
+          </div>
+        </div>
+        <span className="inline-flex w-fit items-center gap-1 rounded-full border border-green-900/50 bg-green-950/30 px-2.5 py-1 text-[11px] font-bold text-green-300">
+          <Check className="h-3.5 w-3.5" />
+          Published
+        </span>
+      </div>
+      <article className="prose prose-invert prose-zinc mt-5 max-w-none prose-p:leading-relaxed prose-headings:text-zinc-100 prose-a:text-blue-400">
+        <ReactMarkdown>{brief.content_markdown}</ReactMarkdown>
+      </article>
+    </section>
+  );
+}
+
+export default function ReportGenerator({ isBroker = true }: { isBroker?: boolean }) {
+  const [brief, setBrief] = useState<DailyBriefResponse | null>(null);
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
   const [copied, setCopied] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+
+  if (!isBroker) {
+    return <LatestDailyBriefView />;
+  }
 
   const handleCopy = () => {
-    if (!reportMarkdown) return;
-    const cleanText = stripMarkdown(reportMarkdown);
-    navigator.clipboard.writeText(cleanText).then(() => {
+    if (!content) return;
+    navigator.clipboard.writeText(stripMarkdown(content)).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
   };
 
-  const handleExportWord = () => {
-    if (!reportMarkdown) return;
-    alert("Export to Word feature connects to Backend API /export-word (Coming soon).");
-  };
-
   const handleGenerate = async (data: JudgmentData) => {
     setIsGenerating(true);
-    setReportMarkdown(null); // clear previous to show loading state
-
     try {
-      const response = await api.post("/report/generate", {
-        manual_override: data,
-      });
-      setReportMarkdown(response.data.report_content);
+      const draft = await apiService.draftDailyBrief({ manual_override: data });
+      setBrief(draft);
+      setTitle(draft.title);
+      setContent(draft.content_markdown);
     } catch (err) {
       console.error(err);
-      alert("Failed to generate report");
+      alert("Không tạo được bản nháp daily brief. Hãy kiểm tra dữ liệu thị trường và GOOGLE_API_KEY.");
     } finally {
       setIsGenerating(false);
     }
   };
 
+  const handleSave = async () => {
+    if (!brief) return;
+    setIsSaving(true);
+    try {
+      const updated = await apiService.updateDailyBrief(brief.id, {
+        title,
+        content_markdown: content,
+      });
+      setBrief(updated);
+      setTitle(updated.title);
+      setContent(updated.content_markdown);
+    } catch (err) {
+      console.error(err);
+      alert("Không lưu được bản nháp.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handlePublish = async () => {
+    if (!brief) return;
+    setIsPublishing(true);
+    try {
+      const updated = await apiService.updateDailyBrief(brief.id, {
+        title,
+        content_markdown: content,
+      });
+      const published = await apiService.publishDailyBrief(updated.id);
+      setBrief(published);
+      setTitle(published.title);
+      setContent(published.content_markdown);
+    } catch (err) {
+      console.error(err);
+      alert("Không publish được daily brief.");
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       <div className="lg:col-span-1">
         <ExpertJudgmentForm onSubmit={handleGenerate} isGenerating={isGenerating} />
       </div>
 
-      <div className="lg:col-span-2 flex flex-col h-full">
-        {/* Output Toolbar */}
-        <div className="bg-[#1a1a1a] border border-zinc-800 rounded-t-lg p-3 flex justify-between items-center shadow-md">
-          <h3 className="font-bold text-zinc-100 flex items-center gap-2">
-            Generated Report
-            {reportMarkdown && <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>}
-          </h3>
+      <div className="flex h-full flex-col lg:col-span-2">
+        <div className="flex flex-col gap-3 rounded-t-lg border border-zinc-800 bg-[#1a1a1a] p-3 shadow-md sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="flex items-center gap-2 font-bold text-zinc-100">
+              Daily brief workspace
+              {brief?.status === "PUBLISHED" && <span className="h-2 w-2 rounded-full bg-green-500" />}
+            </h3>
+            <p className="mt-1 flex items-center gap-1 text-[11px] text-zinc-500">
+              <Clock className="h-3.5 w-3.5" />
+              {brief ? `${brief.status} · ${formatDateTime(brief.published_at || brief.updated_at)}` : "Chưa có bản nháp"}
+            </p>
+          </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={handleCopy}
-              disabled={!reportMarkdown || isGenerating}
-              title="Copy straight to Zalo (No Markdown)"
-              className="p-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 text-xs font-semibold"
+              disabled={!content || isGenerating}
+              className="inline-flex items-center gap-1.5 rounded bg-zinc-800 px-2.5 py-1.5 text-xs font-semibold text-zinc-300 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-              {copied ? "Copied!" : "Copy"}
+              {copied ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
+              {copied ? "Đã copy" : "Copy Zalo"}
             </button>
             <button
-              onClick={handleExportWord}
-              disabled={!reportMarkdown || isGenerating}
-              title="Export to Word (.docx)"
-              className="p-1.5 bg-zinc-800 hover:bg-[#2b579a] text-zinc-300 hover:text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 text-xs font-semibold"
+              onClick={handleSave}
+              disabled={!brief || isSaving || brief.status !== "DRAFT"}
+              className="inline-flex items-center gap-1.5 rounded bg-zinc-800 px-2.5 py-1.5 text-xs font-semibold text-zinc-300 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <FileText className="w-4 h-4" />
-              Word
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Lưu
+            </button>
+            <button
+              onClick={handlePublish}
+              disabled={!brief || !content.trim() || isPublishing || brief.status !== "DRAFT"}
+              className="inline-flex items-center gap-1.5 rounded bg-primary px-2.5 py-1.5 text-xs font-bold text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isPublishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              Publish
             </button>
           </div>
         </div>
 
-        {/* Output Content Field */}
-        <div className="bg-panel border border-t-0 border-zinc-800 rounded-b-lg p-8 flex-1 min-h-[400px] shadow-md overflow-y-auto relative">
-
-          {isGenerating && (
-            <div className="absolute inset-0 z-10 bg-panel/80 backdrop-blur-sm flex flex-col items-center justify-center animate-in fade-in duration-300 rounded-b-lg">
-              <div className="relative flex items-center justify-center mb-4">
-                <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full"></div>
-                <Bot className="w-12 h-12 text-blue-400 animate-bounce relative z-10" />
+        <div className="grid min-h-[520px] flex-1 grid-cols-1 overflow-hidden rounded-b-lg border border-t-0 border-zinc-800 bg-panel shadow-md xl:grid-cols-2">
+          <div className="relative border-b border-zinc-800 p-4 xl:border-b-0 xl:border-r">
+            {isGenerating && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-bl-lg bg-panel/85 backdrop-blur-sm">
+                <Bot className="mb-4 h-12 w-12 animate-bounce text-blue-400" />
+                <h3 className="text-lg font-bold text-zinc-200">AI đang soạn bản nháp...</h3>
+                <p className="mt-1 text-sm text-zinc-500">Broker vẫn là người duyệt cuối cùng trước khi investor nhìn thấy.</p>
               </div>
-              <h3 className="text-zinc-200 font-bold text-lg">AI đang tổng hợp và viết báo cáo...</h3>
-              <p className="text-zinc-500 text-sm mt-1">(Vui lòng đợi khoảng 5-10s)</p>
-            </div>
-          )}
+            )}
 
-          {reportMarkdown && !isGenerating ? (
-            <article className="prose prose-invert prose-zinc max-w-none prose-p:leading-relaxed prose-headings:text-zinc-100 prose-a:text-blue-400">
-              <ReactMarkdown>{reportMarkdown}</ReactMarkdown>
-            </article>
-          ) : !isGenerating && (
-            <div className="h-full flex items-center justify-center text-zinc-300 italic">
-              Đang chờ tạo… Hãy nhập đánh giá của Analyst để bắt đầu.
+            <label className="mb-3 flex flex-col gap-1.5 text-xs font-bold text-zinc-400">
+              Tiêu đề
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                disabled={!brief || brief.status !== "DRAFT"}
+                placeholder="Nhận định thị trường ngày..."
+                className="rounded border border-zinc-800 bg-zinc-900 p-2 text-sm text-zinc-100 outline-none focus:ring-2 focus:ring-blue-600 disabled:opacity-60"
+              />
+            </label>
+
+            <label className="flex h-[420px] flex-col gap-1.5 text-xs font-bold text-zinc-400">
+              Nội dung markdown
+              <textarea
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                disabled={!brief || brief.status !== "DRAFT"}
+                placeholder="Bản nháp AI sẽ xuất hiện ở đây sau khi tạo..."
+                className="h-full resize-none rounded border border-zinc-800 bg-zinc-900 p-3 text-sm leading-relaxed text-zinc-100 outline-none focus:ring-2 focus:ring-blue-600 disabled:opacity-60"
+              />
+            </label>
+
+            {brief?.warnings?.length ? (
+              <div className="mt-3 rounded border border-amber-900/40 bg-amber-950/30 p-3 text-xs text-amber-200">
+                {brief.warnings.map((warning) => (
+                  <div key={warning}>{warning}</div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="p-4">
+            <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-zinc-500">
+              <Eye className="h-4 w-4" />
+              Preview investor hub
             </div>
-          )}
+            {content ? (
+              <article className="prose prose-invert prose-zinc max-w-none prose-p:leading-relaxed prose-headings:text-zinc-100 prose-a:text-blue-400">
+                <ReactMarkdown>{content}</ReactMarkdown>
+              </article>
+            ) : (
+              <div className="flex h-[420px] items-center justify-center rounded border border-dashed border-zinc-800 text-center text-sm text-zinc-500">
+                Tạo bản nháp để xem preview trước khi publish.
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

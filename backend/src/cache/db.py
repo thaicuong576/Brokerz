@@ -145,6 +145,7 @@ def flush_buffers():
                             "trading_date": target_date,
                             "price": data.get("price"),
                             "ref_price": data.get("ref_price"),
+                            "change_percent": data.get("change_percent"),
                             "volume": data.get("volume"),
                             "updated_at": updated_at
                         })
@@ -156,6 +157,7 @@ def flush_buffers():
                             "trading_date": target_date,
                             "f_buy_val": data.get("f_buy_val", 0.0),
                             "f_sell_val": data.get("f_sell_val", 0.0),
+                            "net_val": float(data.get("f_buy_val", 0.0) or 0.0) - float(data.get("f_sell_val", 0.0) or 0.0),
                             "updated_at": datetime.now()
                         })
                 
@@ -177,18 +179,20 @@ def flush_buffers():
                     # 2. Khi UPDATE trên dòng cũ: Nếu price mới là 0/NULL -> GIỮ NGUYÊN giá cũ (Không ghi đè).
                     # 3. Volume: Luôn lấy giá trị lớn nhất (GREATEST) để tránh dữ liệu trễ.
                     mp_query = text("""
-                        INSERT INTO market_prices (symbol, trading_date, price, ref_price, volume, updated_at)
+                        INSERT INTO market_prices (symbol, trading_date, price, ref_price, change_percent, volume, updated_at)
                         VALUES (
                             :symbol, 
                             :trading_date, 
                             COALESCE(NULLIF(:price, 0), :ref_price), 
                             :ref_price, 
+                            :change_percent,
                             :volume, 
                             :updated_at
                         )
                         ON CONFLICT (symbol, trading_date) DO UPDATE SET
                             price = COALESCE(NULLIF(EXCLUDED.price, 0), market_prices.price),
                             ref_price = COALESCE(NULLIF(EXCLUDED.ref_price, 0), market_prices.ref_price),
+                            change_percent = COALESCE(EXCLUDED.change_percent, market_prices.change_percent),
                             volume = GREATEST(market_prices.volume, EXCLUDED.volume),
                             updated_at = EXCLUDED.updated_at
                     """)
@@ -196,11 +200,12 @@ def flush_buffers():
                     
                 if ft_params:
                     ft_query = text("""
-                        INSERT INTO foreign_trading (symbol, trading_date, f_buy_val, f_sell_val, updated_at)
-                        VALUES (:symbol, :trading_date, :f_buy_val, :f_sell_val, :updated_at)
+                        INSERT INTO foreign_trading (symbol, trading_date, f_buy_val, f_sell_val, net_val, updated_at)
+                        VALUES (:symbol, :trading_date, :f_buy_val, :f_sell_val, :net_val, :updated_at)
                         ON CONFLICT (symbol, trading_date) DO UPDATE SET
                             f_buy_val=EXCLUDED.f_buy_val,
                             f_sell_val=EXCLUDED.f_sell_val,
+                            net_val=EXCLUDED.net_val,
                             updated_at=EXCLUDED.updated_at
                     """)
                     conn.execute(ft_query, ft_params)

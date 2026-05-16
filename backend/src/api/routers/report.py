@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from src.database import get_db
@@ -9,12 +9,20 @@ from src.models import (
     ForeignTrading, SectorPerformance
 )
 from src.api.dependencies import limiter
+from src.models.schema import BrokerWorkspace
+from src.modules.identity.service import get_or_create_profile
+from src.shared.auth.dependencies import CurrentActor, get_current_actor
 
 router = APIRouter(prefix="/api/v1/report", tags=["Report"])
 
 @router.post("/generate", response_model=ReportGenerateResponse)
 @limiter.limit("5/minute")
-async def generate_report(request: Request, payload: ReportGenerateRequest, db: Session = Depends(get_db)):
+async def generate_report(
+    request: Request,
+    payload: ReportGenerateRequest,
+    actor: CurrentActor = Depends(get_current_actor),
+    db: Session = Depends(get_db),
+):
     """
     Kích hoạt AIEngine để tạo báo cáo.
     Nhận Manual Override từ frontend (Next.js) và kết hợp dữ liệu DB thực tế.
@@ -22,8 +30,23 @@ async def generate_report(request: Request, payload: ReportGenerateRequest, db: 
     import asyncio
     from src.database import SessionLocal
 
+    profile = get_or_create_profile(db, actor)
+    if profile.role != "BROKER":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only broker profiles can generate market reports")
+    workspace = db.query(BrokerWorkspace).filter(BrokerWorkspace.owner_profile_id == profile.id).first()
+    if not workspace:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Broker workspace has not been created")
+
     # 1. Fetch Index Data (Initial query to get the date)
-    index_row = db.execute(text("SELECT * FROM index_snapshot ORDER BY trading_date DESC LIMIT 1")).fetchone()
+    index_row = db.execute(text("""
+        SELECT *
+        FROM index_snapshot
+        WHERE symbol = 'VNINDEX' AND (COALESCE(total_volume, 0) > 0 OR COALESCE(total_value, 0) > 0)
+        ORDER BY trading_date DESC
+        LIMIT 1
+    """)).fetchone()
+    if not index_row:
+        index_row = db.execute(text("SELECT * FROM index_snapshot WHERE symbol = 'VNINDEX' ORDER BY trading_date DESC LIMIT 1")).fetchone()
     if not index_row:
         raise HTTPException(status_code=404, detail="No market data available in DB")
     

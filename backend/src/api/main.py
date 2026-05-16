@@ -6,6 +6,7 @@ from src.api.routers import market, report, portfolio, profile, inquiry, notific
 from src.modules.identity import router as identity_router
 from src.modules.workspace import router as workspace_router
 from src.modules.recommendations import router as recommendations_router
+from src.modules.daily_briefs import router as daily_briefs_router
 from src.scheduler import start_scheduler
 from src.workers.market_streamer import start_streams
 from src.cache import db
@@ -96,6 +97,7 @@ app.include_router(notification.router, dependencies=jwt_deps)
 app.include_router(identity_router.router)
 app.include_router(workspace_router.router)
 app.include_router(recommendations_router.router)
+app.include_router(daily_briefs_router.router)
 
 @app.api_route("/health", methods=["GET", "HEAD"], tags=["System"])
 def health_check():

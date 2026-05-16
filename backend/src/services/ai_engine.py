@@ -88,7 +88,11 @@ class AIEngine:
         query = self._build_rich_query(data)
         
         # 2. Gọi RAG để tìm bài mẫu tương tự ngữ cảnh này
-        rag_context = self.rag.retrieve_similar_reports(query, k=3)
+        try:
+            rag_context = self.rag.retrieve_similar_reports(query, k=3)
+        except Exception as e:
+            print(f"RAG fallback: {e}")
+            rag_context = ""
 
         # 2.5 Lọc ra top ngành tích cực và tiêu cực
         sorted_sectors = sorted(data.sectors, key=lambda s: s.avg_change, reverse=True)
@@ -143,8 +147,9 @@ class AIEngine:
 
         # 4. Gọi Gemini
         try:
+            report_model = os.getenv("MARKET_REPORT_MODEL", "models/gemini-2.5-flash")
             response = self.client.models.generate_content(
-                model='models/gemini-2.5-flash',
+                model=report_model,
                 contents=prompt,
             )
             return response.text

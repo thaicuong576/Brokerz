@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, BigInteger, Float, Date, DateTime, Integer, Boolean
+from sqlalchemy import Column, String, BigInteger, Float, Date, DateTime, Integer, Boolean, Text
 from src.database import Base
 from sqlalchemy.sql import func
 
@@ -102,6 +102,22 @@ class SoulKeyInvite(Base):
 
     creator = relationship("Profile", foreign_keys=[created_by])
 
+class DailyBrief(Base):
+    __tablename__ = "daily_briefs"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("broker_workspaces.id", ondelete="CASCADE"), index=True, nullable=False)
+    broker_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), index=True, nullable=False)
+    title = Column(String, nullable=False)
+    content_markdown = Column(Text, nullable=False)
+    status = Column(String(20), nullable=False, default="DRAFT")  # DRAFT, PUBLISHED, ARCHIVED
+    market_date = Column(Date, nullable=False)
+    published_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
+
+    workspace = relationship("BrokerWorkspace", foreign_keys=[workspace_id])
+    broker = relationship("Profile", foreign_keys=[broker_id])
+
 class Portfolio(Base):
     __tablename__ = "portfolios"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -145,17 +161,6 @@ class InquiryMessage(Base):
     content = Column(String, nullable=False)
     image_url = Column(String, nullable=True)
     is_ai_generated = Column(Boolean, default=False)
-    created_at = Column(DateTime(timezone=True), default=func.now())
-
-class LegacyRecommendation(Base):
-    """Deprecated — kept for backward compatibility with existing data."""
-    __tablename__ = "recommendations"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    symbol = Column(String(10), nullable=False)
-    type = Column(String(10), nullable=False) # BUY, SELL
-    reason = Column(String)
-    created_by = Column(UUID(as_uuid=True), ForeignKey("profiles.id"))
-    trading_date = Column(Date, default=func.now())
     created_at = Column(DateTime(timezone=True), default=func.now())
 
 class WsRecommendation(Base):

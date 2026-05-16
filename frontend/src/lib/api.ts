@@ -97,6 +97,21 @@ export interface RecommendationEventResponse {
   created_at?: string | null;
 }
 
+export interface DailyBriefResponse {
+  id: string;
+  workspace_id: string;
+  broker_id: string;
+  broker_name?: string | null;
+  title: string;
+  content_markdown: string;
+  status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
+  market_date: string;
+  published_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  warnings?: string[];
+}
+
 export const apiService = {
   async secureFetch(url: string, options: RequestOptions = {}) {
     return request(url, options);
@@ -260,31 +275,43 @@ export const apiService = {
     return response.json();
   },
 
-  // --- Legacy recommendation methods (deprecated, kept for backward compat) ---
-
-  async getRecommendations() {
-    const response = await request("/portfolio/recommendations");
-    return response.json();
-  },
-
-  async createRecommendation(_userId: string, data: any) {
-    const response = await request("/portfolio/recommendations", {
+  async draftDailyBrief(data: {
+    manual_override?: {
+      pe_ratio?: number;
+      technical_score?: number;
+      technical_rating?: string;
+      liquidity_comment?: string;
+      expert_comment?: string;
+    };
+    title?: string;
+  }): Promise<DailyBriefResponse> {
+    const response = await request("/daily-briefs/draft-from-market", {
       method: "POST",
       body: JSON.stringify(data),
     });
     return response.json();
   },
 
-  async deleteRecommendation(recId: string) {
-    const response = await request(`/portfolio/recommendations/${recId}`, { method: "DELETE" });
-    return response.json();
-  },
-
-  async updateRecommendation(recId: string, data: any) {
-    const response = await request(`/portfolio/recommendations/${recId}`, {
+  async updateDailyBrief(briefId: string, data: { title?: string; content_markdown?: string }): Promise<DailyBriefResponse> {
+    const response = await request(`/daily-briefs/${briefId}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     });
+    return response.json();
+  },
+
+  async publishDailyBrief(briefId: string): Promise<DailyBriefResponse> {
+    const response = await request(`/daily-briefs/${briefId}/publish`, { method: "POST" });
+    return response.json();
+  },
+
+  async getLatestDailyBrief(): Promise<DailyBriefResponse | null> {
+    const response = await request("/daily-briefs/latest");
+    return response.json();
+  },
+
+  async getDailyBriefs(): Promise<DailyBriefResponse[]> {
+    const response = await request("/daily-briefs");
     return response.json();
   },
 

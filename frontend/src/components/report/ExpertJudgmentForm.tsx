@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Wand2 } from "lucide-react";
 import useSWR from "swr";
 import api from "@/lib/api";
 
-const fetcher = (url: string) => api.get(url).then(res => res.data);
+const fetcher = (url: string) => api.get(url).then((res) => res.data);
 
 export interface JudgmentData {
   pe_ratio: number;
@@ -24,14 +24,11 @@ const LIQUIDITY_OPTIONS = [
   "Thanh khoản bùng nổ, dòng tiền vào mạnh",
   "Thanh khoản duy trì ở mức trung bình",
   "Thanh khoản sụt giảm, bên mua thận trọng",
-  "Tùy chỉnh..."
+  "Tùy chỉnh...",
 ];
 
 export default function ExpertJudgmentForm({ onSubmit, isGenerating }: ExpertJudgmentFormProps) {
-  const { data: systemStatus } = useSWR('/system/status', fetcher, {
-    refreshInterval: 3000
-  });
-
+  const { data: systemStatus } = useSWR("/system/status", fetcher, { refreshInterval: 3000 });
   const isSyncing = systemStatus?.state === "SYNCING";
   const syncMessage = systemStatus?.message || "Đang đồng bộ dữ liệu tĩnh...";
 
@@ -41,7 +38,7 @@ export default function ExpertJudgmentForm({ onSubmit, isGenerating }: ExpertJud
     technical_score: 5,
     technical_rating: "Tích cực",
     liquidity_comment: LIQUIDITY_OPTIONS[1],
-    expert_comment: "Thị trường phân hóa, khối ngoại bán ròng chờ tín hiệu từ vĩ mô.",
+    expert_comment: "Thị trường phân hóa, khối ngoại bán ròng và cần thêm tín hiệu xác nhận từ dòng tiền.",
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -50,59 +47,63 @@ export default function ExpertJudgmentForm({ onSubmit, isGenerating }: ExpertJud
   };
 
   const handleLiquidityChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value;
-    if (val === "Tùy chỉnh...") {
+    const value = e.target.value;
+    if (value === "Tùy chỉnh...") {
       setIsCustomLiquidity(true);
       setFormData({ ...formData, liquidity_comment: "" });
-    } else {
-      setIsCustomLiquidity(false);
-      setFormData({ ...formData, liquidity_comment: val });
+      return;
     }
+    setIsCustomLiquidity(false);
+    setFormData({ ...formData, liquidity_comment: value });
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-panel border border-zinc-800 rounded-lg shadow-md p-5 flex flex-col gap-5 h-full">
+    <form onSubmit={handleSubmit} className="flex h-full flex-col gap-5 rounded-lg border border-zinc-800 bg-panel p-5 shadow-md">
       <div>
-        <h3 className="font-bold text-lg text-zinc-100 mb-1">Điều chỉnh của Analyst</h3>
-        <p className="text-[11px] text-zinc-500 uppercase tracking-widest font-semibold">Đưa ngữ cảnh vào hệ thống AI.</p>
+        <h3 className="text-lg font-bold text-zinc-100">Điều chỉnh của broker</h3>
+        <p className="mt-1 text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
+          Bổ sung góc nhìn thủ công trước khi AI soạn bản nháp.
+        </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5 text-xs font-bold text-zinc-400">
-          P/E Ratio (VN-Index)
+          P/E VN-Index
           <input
-            type="number" step="0.1"
+            type="number"
+            step="0.1"
             value={formData.pe_ratio}
-            onChange={(e) => setFormData({ ...formData, pe_ratio: parseFloat(e.target.value) })}
-            className="p-2 text-sm bg-zinc-900 border border-zinc-800 text-zinc-200 rounded focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all shadow-inner"
+            onChange={(e) => setFormData({ ...formData, pe_ratio: parseFloat(e.target.value) || 0 })}
+            className="rounded border border-zinc-800 bg-zinc-900 p-2 text-sm text-zinc-200 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-blue-600"
           />
         </label>
 
         <label className="flex flex-col gap-1.5 text-xs font-bold text-zinc-400">
-          Điểm số kỹ thuật (-7 đến +7)
+          Điểm kỹ thuật (-7 đến +7)
           <input
-            type="number" min="-7" max="7"
+            type="number"
+            min="-7"
+            max="7"
             value={formData.technical_score}
             onChange={(e) => {
-              const score = parseInt(e.target.value) || 0;
+              const score = parseInt(e.target.value, 10) || 0;
               let rating = "Trung tính";
               if (score >= 4) rating = "Tích cực";
               else if (score <= -4) rating = "Tiêu cực";
-
               setFormData({ ...formData, technical_score: score, technical_rating: rating });
             }}
-            className="p-2 text-sm bg-zinc-900 border border-zinc-800 text-zinc-200 rounded focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all shadow-inner"
+            className="rounded border border-zinc-800 bg-zinc-900 p-2 text-sm text-zinc-200 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-blue-600"
           />
         </label>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5 text-xs font-bold text-zinc-400">
           Trạng thái kỹ thuật
           <select
             value={formData.technical_rating}
             onChange={(e) => setFormData({ ...formData, technical_rating: e.target.value })}
-            className="p-2 text-sm bg-zinc-900 border border-zinc-800 text-zinc-200 rounded focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all shadow-inner"
+            className="rounded border border-zinc-800 bg-zinc-900 p-2 text-sm text-zinc-200 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-blue-600"
           >
             <option>Tiêu cực</option>
             <option>Trung tính</option>
@@ -111,31 +112,31 @@ export default function ExpertJudgmentForm({ onSubmit, isGenerating }: ExpertJud
         </label>
 
         <label className="flex flex-col gap-1.5 text-xs font-bold text-zinc-400">
-          Nhận xét về thanh khoản (Optional)
+          Nhận xét thanh khoản
           {!isCustomLiquidity ? (
             <select
               value={formData.liquidity_comment}
               onChange={handleLiquidityChange}
-              className="p-2 text-sm bg-zinc-900 border border-zinc-800 text-zinc-200 rounded focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all shadow-inner"
+              className="rounded border border-zinc-800 bg-zinc-900 p-2 text-sm text-zinc-200 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-blue-600"
             >
-              {LIQUIDITY_OPTIONS.map((opt) => (
-                <option key={opt}>{opt}</option>
+              {LIQUIDITY_OPTIONS.map((option) => (
+                <option key={option}>{option}</option>
               ))}
             </select>
           ) : (
-            <div className="flex bg-zinc-900 border border-zinc-800 rounded focus-within:ring-2 focus-within:ring-blue-600 transition-all shadow-inner overflow-hidden">
+            <div className="flex overflow-hidden rounded border border-zinc-800 bg-zinc-900 focus-within:ring-2 focus-within:ring-blue-600">
               <input
                 type="text"
                 autoFocus
-                placeholder="Nhập thanh khoản..."
+                placeholder="Nhập nhận xét thanh khoản..."
                 value={formData.liquidity_comment}
                 onChange={(e) => setFormData({ ...formData, liquidity_comment: e.target.value })}
-                className="p-2 text-sm w-full bg-transparent text-zinc-200 outline-none"
+                className="w-full bg-transparent p-2 text-sm text-zinc-200 outline-none"
               />
               <button
                 type="button"
                 onClick={() => setIsCustomLiquidity(false)}
-                className="px-2 text-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-400 uppercase font-bold transition-colors"
+                className="bg-zinc-800 px-2 text-[10px] font-bold uppercase text-zinc-400 hover:bg-zinc-700"
               >
                 Hủy
               </button>
@@ -145,35 +146,22 @@ export default function ExpertJudgmentForm({ onSubmit, isGenerating }: ExpertJud
       </div>
 
       <label className="flex flex-col gap-1.5 text-xs font-bold text-zinc-400">
-        Nhận xét của Analyst
+        Nhận xét của broker
         <textarea
-          rows={3}
+          rows={4}
           value={formData.expert_comment}
           onChange={(e) => setFormData({ ...formData, expert_comment: e.target.value })}
-          className="p-2 text-sm bg-zinc-900 border border-zinc-800 text-zinc-200 rounded focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all shadow-inner resize-none"
+          className="resize-none rounded border border-zinc-800 bg-zinc-900 p-2 text-sm text-zinc-200 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-blue-600"
         />
       </label>
-
-      <div className="flex-1" /> {/* Spacer */}
 
       <button
         type="submit"
         disabled={isGenerating || isSyncing}
-        className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-4 rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2 shadow-lg hover:shadow-orange-900/40"
+        className="mt-auto inline-flex w-full items-center justify-center gap-2 rounded bg-orange-500 px-4 py-3 font-bold text-white shadow-lg transition-all hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {isGenerating ? (
-          <>
-            <Loader2 className="w-5 h-5 animate-spin" />
-            Đang tổng hợp AI...
-          </>
-        ) : isSyncing ? (
-          <>
-            <Loader2 className="w-5 h-5 animate-spin" />
-            {syncMessage}
-          </>
-        ) : (
-          "Bắt đầu tạo báo cáo AI"
-        )}
+        {isGenerating || isSyncing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Wand2 className="h-5 w-5" />}
+        {isGenerating ? "Đang tạo bản nháp..." : isSyncing ? syncMessage : "Tạo bản nháp daily brief"}
       </button>
     </form>
   );

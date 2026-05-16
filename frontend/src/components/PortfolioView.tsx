@@ -7,11 +7,12 @@ import {
   TrendingUp, ArrowUpRight, ArrowDownRight, 
   Plus, Trash2, Save, RefreshCw, Search,
   PieChart as PieChartIcon, LayoutGrid, List as ListIcon,
-  CloudOff, Cloud
+  CloudOff, Cloud, History
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { apiService } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
+import { RecommendationHistoryModal } from "./RecommendationHistoryModal";
 
 interface Holding {
   symbol: string;
@@ -44,9 +45,10 @@ export function PortfolioView({ isBroker = false, user = null, profile = null }:
 
   // Recommendations State
   const [recommendations, setRecommendations] = useState<any[]>([]);
-  const [recTab, setRecTab] = useState<"BUY" | "SELL">("BUY");
-  const [newRec, setNewRec] = useState({ symbol: "", type: "BUY", reason: "" });
+  const [recTab, setRecTab] = useState<"ACTIVE" | "DRAFT" | "CLOSED">("ACTIVE");
+  const [newRec, setNewRec] = useState({ symbol: "", side: "BUY", thesis: "", entry_price: 0, target_price: 0, cutloss_price: 0, risk_note: "" });
   const [editingRecId, setEditingRecId] = useState<string | null>(null);
+  const [historyRecId, setHistoryRecId] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -57,7 +59,7 @@ export function PortfolioView({ isBroker = false, user = null, profile = null }:
         const fetchId = isBroker ? user.id : (profile?.linked_broker_id || user.id);
         const [stratData, recData] = await Promise.all([
           apiService.getMyStrategy(fetchId),
-          apiService.getRecommendations()
+          apiService.getWsRecommendations()
         ]);
 
         if (stratData && stratData.items) {
@@ -209,31 +211,63 @@ export function PortfolioView({ isBroker = false, user = null, profile = null }:
     if (!newRec.symbol || !user?.id) return;
     try {
       if (editingRecId) {
-        const updated = await apiService.updateRecommendation(editingRecId, newRec);
+        const updated = await apiService.updateRecommendationThesis(editingRecId, {
+          thesis: newRec.thesis,
+          target_price: newRec.target_price || undefined,
+          cutloss_price: newRec.cutloss_price || undefined,
+          risk_note: newRec.risk_note || undefined,
+        });
         setRecommendations(prev => prev.map(r => r.id === editingRecId ? updated : r));
         setEditingRecId(null);
       } else {
-        const res = await apiService.createRecommendation(user.id, newRec);
+        const res = await apiService.createWsRecommendation({
+          symbol: newRec.symbol,
+          side: newRec.side,
+          thesis: newRec.thesis,
+          entry_price: newRec.entry_price || undefined,
+          target_price: newRec.target_price || undefined,
+          cutloss_price: newRec.cutloss_price || undefined,
+          risk_note: newRec.risk_note || undefined,
+        });
         setRecommendations([res, ...recommendations]);
       }
-      setNewRec({ symbol: "", type: recTab, reason: "" });
+      setNewRec({ symbol: "", side: "BUY", thesis: "", entry_price: 0, target_price: 0, cutloss_price: 0, risk_note: "" });
     } catch (err) {
       console.error("Failed to submit recommendation", err);
     }
   };
 
-  const removeRecommendation = async (id: string) => {
+  const publishRecommendation = async (id: string) => {
     try {
-      await apiService.deleteRecommendation(id);
-      setRecommendations(prev => prev.filter(r => r.id !== id));
+      const updated = await apiService.publishRecommendation(id);
+      setRecommendations(prev => prev.map(r => r.id === id ? updated : r));
     } catch (err) {
-      console.error("Failed to delete recommendation", err);
+      console.error("Failed to publish", err);
+    }
+  };
+
+  const closeRecommendation = async (id: string) => {
+    const reason = prompt("Lý do đóng khuyến nghị? (VD: Chạm target, Cắt lỗ...)");
+    if (!reason) return;
+    try {
+      const updated = await apiService.closeRecommendation(id, reason);
+      setRecommendations(prev => prev.map(r => r.id === id ? updated : r));
+    } catch (err) {
+      console.error("Failed to close", err);
     }
   };
 
   const startEditRec = (r: any) => {
     setEditingRecId(r.id);
-    setNewRec({ symbol: r.symbol, type: r.type, reason: r.reason });
+    setNewRec({ 
+      symbol: r.symbol, 
+      side: r.side || "BUY", 
+      thesis: r.thesis || "", 
+      entry_price: r.entry_price || 0,
+      target_price: r.target_price || 0,
+      cutloss_price: r.cutloss_price || 0,
+      risk_note: r.risk_note || ""
+    });
     // Scroll to form
     const form = document.getElementById("rec-form");
     form?.scrollIntoView({ behavior: "smooth" });
@@ -662,25 +696,33 @@ export function PortfolioView({ isBroker = false, user = null, profile = null }:
             </div>
 
             {/* Rec Tabs */}
-            <div className="flex p-2 gap-2 bg-white/5 border-b border-white/5">
+            <div className="flex p-2 gap-2 bg-white/5 border-b border-white/5 overflow-x-auto no-scrollbar">
               <button 
-                onClick={() => setRecTab("BUY")}
-                className={`flex-1 py-2.5 rounded-xl font-black text-[10px] transition-all ${recTab === "BUY" ? "bg-emerald-500 text-black shadow-[0_0_15px_rgba(16,185,129,0.3)]" : "text-muted-foreground hover:bg-white/5"}`}
+                onClick={() => setRecTab("ACTIVE")}
+                className={`flex-1 min-w-[80px] py-2.5 rounded-xl font-black text-[10px] transition-all ${recTab === "ACTIVE" ? "bg-primary text-black shadow-[0_0_15px_rgba(0,240,255,0.3)]" : "text-muted-foreground hover:bg-white/5"}`}
               >
-                KHUYẾN NGHỊ MUA
+                ĐANG MỞ
               </button>
+              {isBroker && (
+                <button 
+                  onClick={() => setRecTab("DRAFT")}
+                  className={`flex-1 min-w-[80px] py-2.5 rounded-xl font-black text-[10px] transition-all ${recTab === "DRAFT" ? "bg-yellow-500 text-black shadow-[0_0_15px_rgba(234,179,8,0.3)]" : "text-muted-foreground hover:bg-white/5"}`}
+                >
+                  BẢN NHÁP
+                </button>
+              )}
               <button 
-                onClick={() => setRecTab("SELL")}
-                className={`flex-1 py-2.5 rounded-xl font-black text-[10px] transition-all ${recTab === "SELL" ? "bg-red-500 text-black shadow-[0_0_15px_rgba(239,68,68,0.3)]" : "text-muted-foreground hover:bg-white/5"}`}
+                onClick={() => setRecTab("CLOSED")}
+                className={`flex-1 min-w-[80px] py-2.5 rounded-xl font-black text-[10px] transition-all ${recTab === "CLOSED" ? "bg-white/20 text-white shadow-[0_0_15px_rgba(255,255,255,0.1)]" : "text-muted-foreground hover:bg-white/5"}`}
               >
-                KHUYẾN NGHỊ BÁN
+                LỊCH SỬ
               </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               <AnimatePresence mode="popLayout">
-                {recommendations.filter(r => r.type === recTab).length > 0 ? (
-                  recommendations.filter(r => r.type === recTab).map((r, i) => (
+                {recommendations.filter(r => r.status === recTab).length > 0 ? (
+                  recommendations.filter(r => r.status === recTab).map((r, i) => (
                     <motion.div 
                       key={r.id || i}
                       initial={{ opacity: 0, x: 20 }}
@@ -690,46 +732,79 @@ export function PortfolioView({ isBroker = false, user = null, profile = null }:
                     >
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-black flex items-center justify-center font-black text-primary border border-primary/20">
+                          <div className={cn(
+                            "w-10 h-10 rounded-xl flex items-center justify-center font-black border",
+                            r.side === "BUY" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"
+                          )}>
                             {r.symbol}
                           </div>
                           <div>
-                            <p className="text-xs font-black">GIÁ HIỆN TẠI</p>
-                            <p className="text-sm font-black text-white">
-                              {(() => {
-                                const livePrice = marketData.find(m => m.symbol === r.symbol)?.price;
-                                const fallbackPrice = r.current_price;
-                                const price = livePrice || fallbackPrice;
-                                return price ? price.toLocaleString() : "---";
-                              })()}
+                            <p className="text-xs font-black text-muted-foreground">
+                              {r.side === "BUY" ? "MUA" : "BÁN"} {r.entry_price ? `@${r.entry_price.toLocaleString()}` : ""}
                             </p>
+                            <div className="flex gap-2 text-[10px] font-bold mt-1">
+                              {r.target_price && <span className="text-emerald-400">TG: {r.target_price.toLocaleString()}</span>}
+                              {r.cutloss_price && <span className="text-red-400">CL: {r.cutloss_price.toLocaleString()}</span>}
+                            </div>
                           </div>
                         </div>
                         {isBroker && (
                           <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
                             <button 
-                              onClick={() => startEditRec(r)}
-                              className="p-2 bg-white/5 hover:bg-primary hover:text-black rounded-xl transition-all"
+                              onClick={() => setHistoryRecId(r.id)}
+                              className="p-2 bg-white/5 hover:bg-white/20 hover:text-white rounded-xl transition-all text-muted-foreground"
+                              title="View History"
                             >
-                              <Save className="w-4 h-4" />
+                              <History className="w-4 h-4" />
                             </button>
-                            <button 
-                              onClick={() => removeRecommendation(r.id)}
-                              className="p-2 bg-white/5 hover:bg-red-500 hover:text-white rounded-xl transition-all"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {r.status === "DRAFT" && (
+                              <button 
+                                onClick={() => publishRecommendation(r.id)}
+                                className="p-2 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-black rounded-xl transition-all"
+                                title="Publish"
+                              >
+                                <ArrowUpRight className="w-4 h-4" />
+                              </button>
+                            )}
+                            {(r.status === "DRAFT" || r.status === "ACTIVE") && (
+                              <>
+                                <button 
+                                  onClick={() => startEditRec(r)}
+                                  className="p-2 bg-white/5 hover:bg-primary hover:text-black rounded-xl transition-all"
+                                  title="Edit Thesis"
+                                >
+                                  <Save className="w-4 h-4" />
+                                </button>
+                                <button 
+                                  onClick={() => closeRecommendation(r.id)}
+                                  className="p-2 bg-white/5 hover:bg-red-500 hover:text-white rounded-xl transition-all"
+                                  title="Close Recommendation"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         )}
                       </div>
-                      <div className="p-4 rounded-xl bg-black/40 border border-white/5 text-[11px] leading-relaxed text-muted-foreground font-medium italic relative group-hover:border-primary/20 transition-all">
-                        " {r.reason} "
+                      <div className="p-4 rounded-xl bg-black/40 border border-white/5 text-[11px] leading-relaxed text-muted-foreground font-medium relative group-hover:border-primary/20 transition-all space-y-2">
+                        <p className="italic">" {r.thesis} "</p>
+                        {r.risk_note && (
+                          <p className="text-red-400/80 text-[10px] border-t border-white/5 pt-2 mt-2">
+                            ⚠️ {r.risk_note}
+                          </p>
+                        )}
+                        {r.status === "CLOSED" && r.closed_reason && (
+                          <p className="text-yellow-400/80 text-[10px] border-t border-white/5 pt-2 mt-2 font-bold">
+                            Đã đóng: {r.closed_reason}
+                          </p>
+                        )}
                       </div>
                     </motion.div>
                   ))
                 ) : (
                   <div className="h-40 flex items-center justify-center text-muted-foreground text-[10px] font-bold uppercase tracking-widest opacity-50 italic">
-                    Chưa có khuyến nghị {recTab === "BUY" ? "mua" : "bán"} nào
+                    Chưa có khuyến nghị nào
                   </div>
                 )}
               </AnimatePresence>
@@ -740,13 +815,13 @@ export function PortfolioView({ isBroker = false, user = null, profile = null }:
               <div id="rec-form" className="p-6 border-t border-white/5 bg-black/20">
                 <div className="flex items-center justify-between mb-4">
                   <h4 className="text-[10px] font-black uppercase tracking-widest text-primary">
-                    {editingRecId ? "Cập Nhật Khuyến Nghị" : "Tạo Khuyến Nghị Mới"}
+                    {editingRecId ? "Cập Nhật Khuyến Nghị" : "Tạo Khuyến Nghị Mới (Nháp)"}
                   </h4>
                   {editingRecId && (
                     <button 
                       onClick={() => {
                         setEditingRecId(null);
-                        setNewRec({ symbol: "", type: recTab, reason: "" });
+                        setNewRec({ symbol: "", side: "BUY", thesis: "", entry_price: 0, target_price: 0, cutloss_price: 0, risk_note: "" });
                       }}
                       className="text-[9px] text-red-400 font-bold hover:underline"
                     >
@@ -755,34 +830,69 @@ export function PortfolioView({ isBroker = false, user = null, profile = null }:
                   )}
                 </div>
                 <div className="space-y-4">
-                  <input 
-                    type="text"
-                    placeholder="Mã CP (VD: SSI)"
-                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-xs focus:outline-none focus:border-primary/50 transition-all font-bold uppercase"
-                    value={newRec.symbol}
-                    onChange={(e) => setNewRec({...newRec, symbol: e.target.value.toUpperCase()})}
-                  />
+                  <div className="grid grid-cols-2 gap-4">
+                    <input 
+                      type="text"
+                      placeholder="Mã CP (VD: SSI)"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-xs focus:outline-none focus:border-primary/50 transition-all font-bold uppercase"
+                      value={newRec.symbol}
+                      onChange={(e) => setNewRec({...newRec, symbol: e.target.value.toUpperCase()})}
+                      disabled={!!editingRecId}
+                    />
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => setNewRec({...newRec, side: "BUY"})}
+                        disabled={!!editingRecId}
+                        className={`flex-1 py-2 rounded-lg text-[9px] font-black border transition-all ${newRec.side === "BUY" ? "bg-emerald-500/10 border-emerald-500 text-emerald-400" : "border-white/5 text-muted-foreground disabled:opacity-50"}`}
+                      >
+                        MUA
+                      </button>
+                      <button 
+                        onClick={() => setNewRec({...newRec, side: "SELL"})}
+                        disabled={!!editingRecId}
+                        className={`flex-1 py-2 rounded-lg text-[9px] font-black border transition-all ${newRec.side === "SELL" ? "bg-red-500/10 border-red-500 text-red-400" : "border-white/5 text-muted-foreground disabled:opacity-50"}`}
+                      >
+                        BÁN
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <input 
+                      type="number"
+                      placeholder="Giá vào"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-xs focus:outline-none focus:border-primary/50 transition-all"
+                      value={newRec.entry_price || ""}
+                      onChange={(e) => setNewRec({...newRec, entry_price: Number(e.target.value)})}
+                    />
+                    <input 
+                      type="number"
+                      placeholder="Target"
+                      className="w-full bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-3 text-xs focus:outline-none focus:border-emerald-500 transition-all"
+                      value={newRec.target_price || ""}
+                      onChange={(e) => setNewRec({...newRec, target_price: Number(e.target.value)})}
+                    />
+                    <input 
+                      type="number"
+                      placeholder="Cutloss"
+                      className="w-full bg-red-500/5 border border-red-500/20 rounded-xl p-3 text-xs focus:outline-none focus:border-red-500 transition-all"
+                      value={newRec.cutloss_price || ""}
+                      onChange={(e) => setNewRec({...newRec, cutloss_price: Number(e.target.value)})}
+                    />
+                  </div>
                   <textarea 
-                    placeholder="Nhận định / Lý do khuyến nghị..."
+                    placeholder="Luận điểm đầu tư (Thesis)..."
                     rows={3}
                     className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-xs focus:outline-none focus:border-primary/50 transition-all font-medium resize-none"
-                    value={newRec.reason}
-                    onChange={(e) => setNewRec({...newRec, reason: e.target.value})}
+                    value={newRec.thesis}
+                    onChange={(e) => setNewRec({...newRec, thesis: e.target.value})}
                   ></textarea>
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => setNewRec({...newRec, type: "BUY"})}
-                      className={`flex-1 py-2 rounded-lg text-[9px] font-black border transition-all ${newRec.type === "BUY" ? "bg-emerald-500/10 border-emerald-500 text-emerald-400" : "border-white/5 text-muted-foreground"}`}
-                    >
-                      MUA
-                    </button>
-                    <button 
-                      onClick={() => setNewRec({...newRec, type: "SELL"})}
-                      className={`flex-1 py-2 rounded-lg text-[9px] font-black border transition-all ${newRec.type === "SELL" ? "bg-red-500/10 border-red-500 text-red-400" : "border-white/5 text-muted-foreground"}`}
-                    >
-                      BÁN
-                    </button>
-                  </div>
+                  <textarea 
+                    placeholder="Rủi ro / Lưu ý (Risk note)..."
+                    rows={1}
+                    className="w-full bg-red-500/5 border border-red-500/20 rounded-xl p-3 text-xs focus:outline-none focus:border-red-500/50 transition-all font-medium resize-none text-red-400 placeholder:text-red-400/50"
+                    value={newRec.risk_note}
+                    onChange={(e) => setNewRec({...newRec, risk_note: e.target.value})}
+                  ></textarea>
                   <button 
                     onClick={submitRecommendation}
                     className={cn(
@@ -790,7 +900,7 @@ export function PortfolioView({ isBroker = false, user = null, profile = null }:
                       editingRecId ? "bg-emerald-500 text-black shadow-[0_0_20px_rgba(16,185,129,0.3)]" : "bg-primary text-black hover:shadow-[0_0_20px_rgba(0,240,255,0.3)]"
                     )}
                   >
-                    {editingRecId ? "Cập Nhật Khuyến Nghị" : "Phát hành Khuyến nghị"}
+                    {editingRecId ? "Lưu Thay Đổi" : "Tạo Bản Nháp (Draft)"}
                   </button>
                 </div>
               </div>
@@ -798,6 +908,11 @@ export function PortfolioView({ isBroker = false, user = null, profile = null }:
           </div>
         </div>
       </div>
+      <RecommendationHistoryModal 
+        isOpen={!!historyRecId} 
+        onClose={() => setHistoryRecId(null)} 
+        recId={historyRecId} 
+      />
     </>
   );
 }
