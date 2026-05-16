@@ -1,0 +1,46 @@
+[tool.poetry]
+name = "brokez-platform"
+version = "0.1.0"
+description = "Institutional financial intelligence platform powered by Brokez AI"
+authors = ["NDPhuu <ducphu.tc10@gmail.com>"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pandas = ">=2.2.0"
+pydantic = ">=2.0.0"
+python-dotenv = ">=1.0.0"
+requests = ">=2.31.0"
+paho-mqtt = ">=2.0.0"
+chromadb = ">=0.4.0"
+langchain = ">=0.1.0"
+langchain-google-genai = ">=1.0.0"
+
+langchain-community = ">=0.0.10"
+langchain-chroma = ">=0.1.0"
+
+fastapi = ">=0.110.0"
+uvicorn = ">=0.27.0"
+sqlalchemy = ">=2.0.0"
+psycopg2-binary = ">=2.9.0"
+apscheduler = ">=3.10.0"
+slowapi = ">=0.1.0"
+boto3 = ">=1.34.0"
+pyarrow = ">=15.0.0"
+urllib3 = "<2.0.0"
+protobuf = "3.20.3"
+torch = {version = "^2.2.0", source = "pytorch-cpu"}
+google-genai = "^1.68.0"
+pdfplumber = "^0.11.9"
+psutil = ">=5.9.0"
+alembic = ">=1.13.0"
+
+[[tool.poetry.source]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+priority = "explicit"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
