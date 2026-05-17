@@ -24,7 +24,10 @@ export default function ForeignActivityPanel({ isBroker = false }: { isBroker?: 
 
     try {
       setIsSyncing(true);
-      await api.post("/sync-eod");
+      const result = await api.post("/sync-eod");
+      if (result.data?.status === "paused") {
+        alert(result.data.message || "EOD Sync đang tạm dừng; chưa có job nào được khởi chạy.");
+      }
       mutateSync();
     } catch (err) {
       alert(`Không khởi động được đồng bộ: ${err}`);
@@ -52,7 +55,7 @@ export default function ForeignActivityPanel({ isBroker = false }: { isBroker?: 
       <div className="flex items-start justify-between border-b border-panel-border bg-[#1a1a1a] p-4">
         <div>
           <div className="flex items-center gap-2">
-            <h3 className="font-bold text-zinc-200">Khối ngoại mua/bán</h3>
+            <h3 className="font-bold text-zinc-200">Top khối ngoại Mua/Bán</h3>
             {isEOD && (
               <span className="rounded border border-market-up/20 bg-market-up/10 px-1.5 py-0.5 text-[10px] font-bold text-market-up">
                 Đã chốt EOD
@@ -77,15 +80,14 @@ export default function ForeignActivityPanel({ isBroker = false }: { isBroker?: 
           <button
             onClick={handleSync}
             disabled={isRunning || isSyncing}
-            className={`rounded px-3 py-1.5 text-xs font-bold shadow transition-all ${
-              isRunning
+            className={`rounded px-3 py-1.5 text-xs font-bold shadow transition-all ${isRunning
                 ? "cursor-not-allowed bg-zinc-800 text-zinc-500"
                 : isEOD
                   ? "bg-market-up text-black"
                   : "border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20"
-            }`}
+              }`}
           >
-            {isRunning ? "Đang đồng bộ..." : isEOD ? "Đã chốt EOD" : "Đồng bộ EOD"}
+            {isRunning ? "Đang đồng bộ..." : isEOD ? "Đã chốt EOD" : "EOD Sync tạm dừng"}
           </button>
         )}
       </div>

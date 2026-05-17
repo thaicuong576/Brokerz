@@ -235,7 +235,7 @@ def _generate_market_report(db: Session, manual_override: Optional[ManualOverrid
         impact_negative=[f"{row.symbol} ({float(row.change_percent or 0):+.2f}%)" for row in neg_rows],
         sectors=sectors_data,
         foreign=ReportForeignTrading(
-            net_value=abs(foreign_net) / 1_000_000_000,
+            net_value=round(abs(foreign_net) / 1_000_000_000),
             status=foreign_status,
             top_buy=[
                 f"{row.symbol} (+{float(row.net_val or 0) / 1_000_000_000:,.0f} tỷ đồng)"

@@ -1,18 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { useRouter, usePathname } from "next/navigation";
-import { Navbar } from "@/components/Navbar";
-import { TetherGate } from "@/components/TetherGate";
-import { apiService } from "@/lib/api";
-import { supabase } from "@/lib/supabase";
-import { UserContext } from "@/context/UserContext";
-import { cn } from "@/lib/utils";
+import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { AlertTriangle } from "lucide-react";
+
 import { Dashboard } from "@/components/Dashboard";
 import { InquiryHub } from "@/components/InquiryHub";
+import { Navbar } from "@/components/Navbar";
 import { PortfolioView } from "@/components/PortfolioView";
 import { ProfileHub } from "@/components/ProfileHub";
+import { TetherGate } from "@/components/TetherGate";
+import { UserContext } from "@/context/UserContext";
+import { apiService } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabase";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -34,10 +35,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return "intelligence";
   };
 
-  // Add the current tab to visited list whenever it changes
   useEffect(() => {
     const activeTab = getActiveTab();
-    setVisitedTabs(prev => {
+    setVisitedTabs((prev) => {
       if (prev.has(activeTab)) return prev;
       const next = new Set(prev);
       next.add(activeTab);
@@ -52,22 +52,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         loadFoundation();
       } else {
         setLoading(false);
-        router.push('/login');
+        router.push("/login");
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setSession(session);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, authSession) => {
+      if (authSession?.user) {
+        setSession(authSession);
         loadFoundation();
       } else {
         setLoading(false);
-        router.push('/login');
+        router.push("/login");
       }
     });
 
     return () => subscription.unsubscribe();
-  }, []); // Remove router from dependency to prevent re-runs on navigation
+  }, []);
 
   const loadFoundation = async () => {
     setLoading(true);
@@ -76,11 +76,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       let currentWorkspace = await apiService.getCurrentWorkspace();
       const currentRole = me.role === "BROKER" ? "broker" : "investor";
 
-      // Detect broker-pending state: user intended broker login but got INVESTOR from backend
-      const loginIntent = typeof window !== 'undefined'
-        ? localStorage.getItem('bkz_login_intent')
-        : null;
-      if (loginIntent === 'broker' && currentRole === 'investor') {
+      const loginIntent = typeof window !== "undefined" ? localStorage.getItem("bkz_login_intent") : null;
+      if (loginIntent === "broker" && currentRole === "investor") {
         setBrokerPendingApproval(true);
         setLoading(false);
         return;
@@ -104,15 +101,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         broker_name: currentWorkspace.workspace?.name || null,
       });
 
-      if (currentRole === 'broker' || currentWorkspace.workspace) {
-        setIsTethered(true);
-      } else {
-        setIsTethered(false);
-      }
+      setIsTethered(currentRole === "broker" || Boolean(currentWorkspace.workspace));
     } catch (e) {
       console.error("Session foundation load failed:", e);
       setSession(null);
-      router.push('/login');
+      router.push("/login");
     } finally {
       setLoading(false);
     }
@@ -120,19 +113,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    if (typeof window !== 'undefined') localStorage.removeItem('bkz_login_intent');
+    if (typeof window !== "undefined") localStorage.removeItem("bkz_login_intent");
     setSession(null);
     setIsTethered(false);
     setWorkspace(null);
     setProfile(null);
     setBrokerPendingApproval(false);
-    router.push('/login');
+    router.push("/login");
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="w-12 h-12 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
+      <div className="flex min-h-screen items-center justify-center bg-black">
+        <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
       </div>
     );
   }
@@ -141,128 +134,98 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (brokerPendingApproval) {
     return (
-      <div className="fixed inset-0 z-[200] bg-black flex items-center justify-center p-6 overflow-hidden">
-        <div className="absolute inset-0 -z-10">
-          <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-amber-500/10 blur-[150px] rounded-full animate-pulse" />
-          <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-amber-500/5 blur-[120px] rounded-full" />
-        </div>
-        <div className="w-full max-w-xl glass rounded-[48px] border border-white/5 p-12 relative overflow-hidden text-center">
-          <div className="w-20 h-20 bg-amber-500/10 rounded-[32px] flex items-center justify-center mx-auto mb-8 border border-amber-500/20 shadow-[0_0_30px_rgba(245,158,11,0.15)]">
-            <svg className="w-10 h-10 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-            </svg>
+      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black p-6">
+        <div className="w-full max-w-lg rounded border border-panel-border bg-panel p-8 text-center">
+          <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded border border-amber-500/20 bg-amber-500/10 text-amber-400">
+            <AlertTriangle className="h-6 w-6" />
           </div>
-          <h2 className="text-3xl font-black tracking-tighter uppercase mb-4 text-amber-400">Đang Chờ Phê Duyệt</h2>
-          <p className="text-muted-foreground font-medium mb-2 max-w-sm mx-auto">
-            Tài khoản <span className="text-white">{session?.user?.email}</span> chưa được cấp quyền Broker.
+          <h2 className="text-xl font-bold text-amber-400">Đang chờ phê duyệt</h2>
+          <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-zinc-400">
+            Tài khoản <span className="text-zinc-100">{session?.user?.email}</span> chưa được cấp quyền Broker.
           </p>
-          <p className="text-muted-foreground text-sm mb-10 max-w-sm mx-auto">
+          <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-zinc-500">
             Liên hệ quản trị viên để được thêm vào danh sách Broker hoặc đăng nhập lại bằng tài khoản nhà đầu tư.
           </p>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-2 mx-auto text-[11px] text-muted-foreground uppercase font-black tracking-widest hover:text-white transition-colors border border-white/10 rounded-2xl px-6 py-3"
+            className="mt-6 rounded border border-panel-border bg-zinc-950 px-5 py-2 text-xs font-bold text-zinc-300 hover:border-primary/50"
           >
-            Đăng Xuất
+            Đăng xuất
           </button>
         </div>
       </div>
     );
   }
 
-  if (userType === 'investor' && !isTethered) {
+  if (userType === "investor" && !isTethered) {
     return <TetherGate user={session?.user} onGateUnlock={loadFoundation} />;
   }
 
+  const activeTab = getActiveTab();
+  const pageTitle =
+    activeTab === "intelligence" ? "Thị trường" :
+    activeTab === "inquiry" ? "Hỏi đáp" :
+    activeTab === "portfolio" ? "Danh mục" :
+    "Cá nhân";
+  const pageDescription =
+    activeTab === "intelligence" ? "Bảng điều khiển dữ liệu thị trường, nhận định và nguồn dữ liệu." :
+    activeTab === "inquiry" ? "Trao đổi giữa broker và nhà đầu tư." :
+    activeTab === "portfolio" ? "Theo dõi danh mục và khuyến nghị đã publish." :
+    "Quản lý thông tin tài khoản và kết nối workspace.";
+
   return (
-    <main className="min-h-screen pt-28 pb-12 px-4 md:px-8 max-w-[1440px] mx-auto selection:bg-primary/30">
-      <Navbar 
-        activeTab={getActiveTab()} 
+    <main className="mx-auto min-h-screen max-w-[1440px] px-3 pb-8 pt-20 selection:bg-primary/30 md:px-5">
+      <Navbar
+        activeTab={activeTab}
         setActiveTab={(tab) => {
-            if (tab === "intelligence") router.push("/");
-            else router.push(`/${tab}`);
-        }} 
-        isBroker={userType === "broker"} 
+          if (tab === "intelligence") router.push("/");
+          else router.push(`/${tab}`);
+        }}
+        isBroker={userType === "broker"}
         onLogout={handleLogout}
         user={session?.user}
       />
 
-      <div className="mb-12 flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <motion.h1 
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="text-4xl font-black tracking-tighter sm:text-5xl md:text-6xl uppercase italic"
-          >
-            {getActiveTab() === "intelligence" && "Brokez"}
-            {getActiveTab() === "inquiry" && "Hỏi đáp"}
-            {getActiveTab() === "portfolio" && "Danh mục"}
-            {getActiveTab() === "profile" && "Cá nhân"}
-          </motion.h1>
-          <motion.p 
-             initial={{ opacity: 0, x: -20 }}
-             animate={{ opacity: 1, x: 0 }}
-             transition={{ delay: 0.1 }}
-             className="text-muted-foreground mt-2 max-w-xl font-medium"
-          >
-            {getActiveTab() === "intelligence" && "Theo dõi biến động và dữ liệu thị trường thời gian thực."}
-            {getActiveTab() === "inquiry" && "Hỗ trợ giải đáp thắc mắc và phân tích dữ liệu bằng AI."}
-            {getActiveTab() === "portfolio" && "Theo dõi hiệu suất và tối ưu hóa danh mục đầu tư."}
-            {getActiveTab() === "profile" && "Quản lý thông tin cá nhân và thiết lập tài khoản."}
-          </motion.p>
+      <div className="mb-3 rounded border border-panel-border bg-panel px-4 py-3">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-[10px] font-bold uppercase text-zinc-600">BROKERZ TERMINAL</div>
+            <h1 className="mt-0.5 text-lg font-bold text-zinc-100">{pageTitle}</h1>
+            <p className="mt-1 text-xs text-zinc-500">{pageDescription}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+            <span className="rounded border border-panel-border bg-zinc-950 px-2 py-1">
+              {userType === "broker" ? "BROKER" : "INVESTOR"}
+            </span>
+            <span className="rounded border border-panel-border bg-zinc-950 px-2 py-1">
+              {workspace?.name || "Workspace"}
+            </span>
+          </div>
         </div>
       </div>
 
-      <div className="relative">
-        <UserContext.Provider value={{ 
-          user: session?.user, 
-          profile, 
-          workspace,
-          isBroker: userType === "broker" 
-        }}>
-          {/* PERSISTENT TABS - Lazy loaded to save memory, then kept off-screen to preserve state */}
-          <div className={cn(getActiveTab() === "intelligence" ? "relative opacity-100" : "absolute -left-[9999px] -top-[9999px] opacity-0 pointer-events-none invisible")}>
-            {visitedTabs.has("intelligence") && <Dashboard isBroker={userType === "broker"} />}
-          </div>
-          
-          <div className={cn(getActiveTab() === "inquiry" ? "relative opacity-100" : "absolute -left-[9999px] -top-[9999px] opacity-0 pointer-events-none invisible")}>
-            {visitedTabs.has("inquiry") && (
-              <InquiryHub 
-                user={session?.user} 
-                isBroker={userType === "broker"}
-                profile={profile}
-              />
-            )}
-          </div>
+      <UserContext.Provider value={{ user: session?.user, profile, workspace, isBroker: userType === "broker" }}>
+        <div className={cn(activeTab === "intelligence" ? "relative opacity-100" : "invisible absolute -left-[9999px] -top-[9999px] opacity-0")}>
+          {visitedTabs.has("intelligence") && <Dashboard isBroker={userType === "broker"} />}
+        </div>
 
-          <div className={cn(getActiveTab() === "portfolio" ? "relative opacity-100" : "absolute -left-[9999px] -top-[9999px] opacity-0 pointer-events-none invisible")}>
-            {visitedTabs.has("portfolio") && (
-              <PortfolioView 
-                isBroker={userType === "broker"} 
-                user={session?.user} 
-                profile={profile}
-              />
-            )}
-          </div>
+        <div className={cn(activeTab === "inquiry" ? "relative opacity-100" : "invisible absolute -left-[9999px] -top-[9999px] opacity-0")}>
+          {visitedTabs.has("inquiry") && <InquiryHub user={session?.user} isBroker={userType === "broker"} profile={profile} />}
+        </div>
 
-          <div className={cn(getActiveTab() === "profile" ? "relative opacity-100" : "absolute -left-[9999px] -top-[9999px] opacity-0 pointer-events-none invisible")}>
-            {visitedTabs.has("profile") && (
-              <ProfileHub 
-                isBroker={userType === "broker"} 
-                user={session?.user} 
-                profile={profile}
-              />
-            )}
-          </div>
+        <div className={cn(activeTab === "portfolio" ? "relative opacity-100" : "invisible absolute -left-[9999px] -top-[9999px] opacity-0")}>
+          {visitedTabs.has("portfolio") && <PortfolioView isBroker={userType === "broker"} user={session?.user} profile={profile} />}
+        </div>
 
-          {/* Fallback for other children if any */}
-          <div className="hidden">{children}</div>
-        </UserContext.Provider>
-      </div>
+        <div className={cn(activeTab === "profile" ? "relative opacity-100" : "invisible absolute -left-[9999px] -top-[9999px] opacity-0")}>
+          {visitedTabs.has("profile") && <ProfileHub isBroker={userType === "broker"} user={session?.user} profile={profile} />}
+        </div>
 
-      <div className="fixed top-0 left-0 -z-10 w-full h-full overflow-hidden pointer-events-none">
-        <div className={`absolute top-[-10%] left-[-10%] w-[40%] h-[40%] blur-[120px] rounded-full transition-all duration-1000 ${userType === 'broker' ? 'bg-primary/5' : 'bg-blue-500/5'}`} />
-        <div className="absolute bottom-[10%] right-[-5%] w-[30%] h-[30%] bg-blue-500/5 blur-[100px] rounded-full" />
+        <div className="hidden">{children}</div>
+      </UserContext.Provider>
+
+      <div className="pointer-events-none fixed inset-0 -z-10 bg-background">
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:64px_64px]" />
       </div>
     </main>
   );

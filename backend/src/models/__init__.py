@@ -2,7 +2,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 
-# --- 1. Dá»® LIá»†U CÆ  Báº¢N ---
+# --- 1. DỮ LIỆU CƠ BẢN ---
 class MarketBreadth(BaseModel):
     green: int = 0
     red: int = 0
@@ -15,13 +15,13 @@ class MarketIndex(BaseModel):
     point: float
     change_point: float
     change_percent: float
-    total_volume: int = 0 # Khá»‘i lÆ°á»£ng giao dá»‹ch (Triá»‡u Ä‘á»“ng)
-    total_value: float # GiÃ¡ trá»‹ giao dá»‹ch (Tá»· Ä‘á»“ng)
+    total_volume: int = 0 # Khối lượng giao dịch (Triệu đồng)
+    total_value: float # Giá trị giao dịch (Tỷ đồng)
     breadth: MarketBreadth
 
-# --- 2. Dá»® LIá»†U CHI TIáº¾T ---
+# --- 2. DỮ LIỆU CHI TIẾT ---
 class StockData(BaseModel):
-    """LÆ°u giÃ¡ vÃ  cÃ¡c chá»‰ sá»‘ chuáº©n hÃ³a cá»§a tá»«ng mÃ£ chá»©ng khoÃ¡n"""
+    """Lưu giá và các chỉ số chuẩn hóa của từng mã chứng khoán"""
     symbol: str
     price: float
     ref_price: float = 0.0
@@ -32,25 +32,25 @@ class StockData(BaseModel):
     f_sell_val: float = 0.0
 
 class SectorPerformance(BaseModel):
-    """Káº¿t quáº£ phÃ¢n tÃ­ch ngÃ nh"""
-    name: str # VD: NgÃ¢n hÃ ng
-    avg_change: float # % TÄƒng giáº£m trung bÃ¬nh
-    top_gainers: List[str] # CÃ¡c mÃ£ tÄƒng máº¡nh nháº¥t trong ngÃ nh
-    top_losers: List[str] # CÃ¡c mÃ£ giáº£m máº¡nh nháº¥t
-    status: str # "TÃ­ch cá»±c", "TiÃªu cá»±c", "PhÃ¢n hÃ³a"
+    """Kết quả phân tích ngành"""
+    name: str # VD: Ngân hàng
+    avg_change: float # % tăng giảm trung bình
+    top_gainers: List[str] # Các mã tăng mạnh nhất trong ngành
+    top_losers: List[str] # Các mã giảm mạnh nhất
+    status: str # "Tích cực", "Tiêu cực", "Phân hóa"
 
 class ForeignTrading(BaseModel):
-    status: str # MUA RÃ’NG / BÃN RÃ’NG
+    status: str # MUA RÒNG / BÁN RÒNG
     net_value: float
     top_buy: List[str]
     top_sell: List[str]
 
-# --- 3. Dá»® LIá»†U Tá»”NG Há»¢P (INPUT CHO AI) ---
+# --- 3. DỮ LIỆU TỔNG HỢP (INPUT CHO AI) ---
 class DailyReportInput(BaseModel):
-    """Object chá»©a TOÃ€N Bá»˜ dá»¯ liá»‡u Ä‘á»ƒ nÃ©m vÃ o Prompt"""
+    """Object chứa TOÀN BỘ dữ liệu để ném vào Prompt"""
     date: str
     index: MarketIndex
-    liquidity_comment: str # "Cao hÆ¡n trung bÃ¬nh", "Tháº¥p hÆ¡n"...
+    liquidity_comment: str # "Cao hơn trung bình", "Thấp hơn"...
     impact_positive: List[str] # ["VCB (+2%)", "BID (+1%)"]
     impact_negative: List[str]
     sectors: List[SectorPerformance]

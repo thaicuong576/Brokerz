@@ -15,6 +15,10 @@ load_dotenv()
 
 import threading
 
+
+def _format_billion(value: float) -> str:
+    return f"{float(value or 0):,.0f}"
+
 class AIEngine:
     _instance = None
     _lock = threading.Lock()
@@ -66,7 +70,7 @@ class AIEngine:
         else: liq = "thanh khoản cạn kiệt, dòng tiền thận trọng, tiết cung"
 
         # 3. Xác định Khối ngoại
-        foreign = f"khối ngoại {data.foreign.status.lower()} {data.foreign.net_value} tỷ"
+        foreign = f"khối ngoại {data.foreign.status.lower()} {_format_billion(data.foreign.net_value)} tỷ"
 
         # 4. Ghép thành câu Query hoàn chỉnh
         # Cấu trúc: [Xu hướng] + [Thanh khoản] + [Khối ngoại] + [Nhận định chuyên gia]
@@ -129,7 +133,7 @@ class AIEngine:
                 breadth_red=data.index.breadth.red + data.index.breadth.floor,
                 breadth_yellow=data.index.breadth.yellow,
                 foreign_status=data.foreign.status,
-                foreign_value=data.foreign.net_value,
+                foreign_value=_format_billion(data.foreign.net_value),
                 foreign_buy_top=", ".join(data.foreign.top_buy),
                 foreign_sell_top=", ".join(data.foreign.top_sell),
                 impact_positive=", ".join(data.impact_positive),

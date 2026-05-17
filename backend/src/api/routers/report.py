@@ -113,9 +113,9 @@ async def generate_report(
 
     f_trading = ForeignTrading(
         status=f_status,
-        net_value=abs(f_net) / 1e9,
+        net_value=round(abs(f_net) / 1e9),
         top_buy=[f"{r.symbol} (+{float(r.net_val) / 1e9:,.0f} tỷ đồng)" for r in top_buy_rows],
-        top_sell=[f"{r.symbol} (-{float(r.net_val) / 1e9:,.0f} tỷ đồng)" for r in top_sell_rows]
+        top_sell=[f"{r.symbol} (-{abs(float(r.net_val)) / 1e9:,.0f} tỷ đồng)" for r in top_sell_rows]
     )
 
     # Values that can be overridden by user

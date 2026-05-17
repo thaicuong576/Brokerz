@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import text, desc, asc
+from sqlalchemy import text, desc, asc, func
 from src.database import get_db
 from src.models.schema import IndexSnapshot, ForeignTrading
 from datetime import datetime
@@ -18,6 +18,8 @@ from src.scheduler import cleanup_old_data
 from src.config import SECTOR_MAPPING
 
 router = APIRouter(prefix="/api/v1", tags=["Market Data"])
+
+EOD_SYNC_ENABLED = os.getenv("ENABLE_EOD_SYNC", "false").lower() in {"1", "true", "yes", "on"}
 
 
 def _sync_completed_for(target_date, sync_type: str) -> bool:
@@ -40,7 +42,7 @@ def _foreign_source_meta(target_date):
         }
     return {
         "source": "DNSE_INTRADAY_WITH_SSI_FALLBACK",
-        "source_label": "DNSE trong phiên, SSI bổ sung khi có EOD",
+        "source_label": "DNSE Intraday - Dữ liệu tạm thời",
         "is_eod": False,
     }
 
@@ -48,22 +50,219 @@ def _foreign_source_meta(target_date):
 def _market_source_meta(is_live: bool):
     return {
         "source": "DNSE_REALTIME" if is_live else "DATABASE_SNAPSHOT",
-        "source_label": "DNSE realtime" if is_live else "Dữ liệu đã lưu",
+        "source_label": "DNSE Realtime" if is_live else "DB Snapshot",
     }
 
 
 def _impact_source_meta():
     return {
         "source": "DNSE_LISTED_SHARES",
-        "source_label": "DNSE + số lượng cổ phiếu niêm yết",
+        "source_label": "DNSE & Listed shares updated 17/05/26",
     }
 
 
 def _sector_source_meta(is_view: bool):
     return {
         "source": "SECTOR_VIEW" if is_view else "DNSE_SECTOR_FALLBACK",
-        "source_label": "View ngành đã lưu" if is_view else "DNSE + mapping ngành",
+        "source_label": "Tổng quan nhóm ngành" if is_view else "Tổng quan nhóm ngành - Dữ liệu tạm thời",
     }
+
+
+def _no_data_meta():
+    return {
+        "source": "NO_DATA",
+        "source_label": "Chưa có dữ liệu",
+    }
+
+
+def _to_float(value, default=0.0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _latest_vnindex_point(db: Session, target_date):
+    row = (
+        db.query(IndexSnapshot.point)
+        .filter(IndexSnapshot.symbol == "VNINDEX", IndexSnapshot.trading_date == target_date)
+        .order_by(desc(IndexSnapshot.trading_date))
+        .first()
+    )
+    return _to_float(row[0]) if row else 0.0
+
+
+def _build_foreign_payload(db: Session, limit: int = 10, only_directional: bool = False):
+    date_query = db.query(func.max(ForeignTrading.trading_date))
+    if only_directional:
+        date_query = date_query.filter(
+            (ForeignTrading.f_buy_val != 0) | (ForeignTrading.f_sell_val != 0) | (ForeignTrading.net_val != 0)
+        )
+    active_date = date_query.scalar()
+
+    if not active_date:
+        return {
+            "top_buy": [],
+            "top_sell": [],
+            "total_net_val": 0.0,
+            "trading_date": None,
+            "is_eod": False,
+            **_no_data_meta(),
+        }
+
+    buy_query = db.query(ForeignTrading).filter(ForeignTrading.trading_date == active_date)
+    sell_query = db.query(ForeignTrading).filter(ForeignTrading.trading_date == active_date)
+    if only_directional:
+        buy_query = buy_query.filter(ForeignTrading.net_val > 0)
+        sell_query = sell_query.filter(ForeignTrading.net_val < 0)
+
+    top_buy = buy_query.order_by(desc(ForeignTrading.net_val)).limit(limit).all()
+    top_sell = sell_query.order_by(asc(ForeignTrading.net_val)).limit(limit).all()
+    buy_sum = float(db.execute(text("SELECT SUM(f_buy_val) FROM foreign_trading WHERE trading_date = :d"), {"d": active_date}).scalar() or 0)
+    sell_sum = float(db.execute(text("SELECT SUM(f_sell_val) FROM foreign_trading WHERE trading_date = :d"), {"d": active_date}).scalar() or 0)
+
+    return {
+        "top_buy": top_buy,
+        "top_sell": top_sell,
+        "total_net_val": buy_sum - sell_sum,
+        "trading_date": active_date,
+        **_foreign_source_meta(active_date),
+    }
+
+
+def _build_top_impact(db: Session, active_date, limit: int = 10, vnindex_point=None):
+    impact = {"positive": [], "negative": []}
+    positive_query = text("""
+        SELECT symbol, sector, price, ref_price, change_percent, impact_value
+        FROM impact_metrics
+        WHERE impact_value > 0.001 AND trading_date = :dt
+        ORDER BY impact_value DESC
+        LIMIT :limit
+    """)
+    negative_query = text("""
+        SELECT symbol, sector, price, ref_price, change_percent, impact_value
+        FROM impact_metrics
+        WHERE impact_value < -0.001 AND trading_date = :dt
+        ORDER BY impact_value ASC
+        LIMIT :limit
+    """)
+
+    try:
+        impact = {
+            "positive": [dict(row._mapping) for row in db.execute(positive_query, {"limit": limit, "dt": active_date}).fetchall()],
+            "negative": [dict(row._mapping) for row in db.execute(negative_query, {"limit": limit, "dt": active_date}).fetchall()],
+        }
+    except Exception:
+        impact = {"positive": [], "negative": []}
+
+    if impact["positive"] or impact["negative"]:
+        impact.update({"trading_date": active_date, **_impact_source_meta()})
+        return impact
+
+    fallback_query = text("""
+        WITH caps AS (
+            SELECT
+                m.symbol,
+                s.sector,
+                m.price,
+                m.ref_price,
+                COALESCE(m.change_percent, CASE WHEN m.ref_price > 0 THEN ((m.price - m.ref_price) / m.ref_price) * 100 ELSE 0 END) AS change_percent,
+                COALESCE(NULLIF(s.listed_shares, 0), 1) AS listed_shares,
+                SUM(m.price * COALESCE(NULLIF(s.listed_shares, 0), 1)) OVER () AS total_market_cap
+            FROM market_prices m
+            LEFT JOIN stocks s ON m.symbol = s.symbol
+            WHERE m.trading_date = :dt
+              AND m.price IS NOT NULL
+              AND m.ref_price IS NOT NULL
+              AND m.ref_price > 0
+        )
+        SELECT
+            symbol,
+            sector,
+            price,
+            ref_price,
+            change_percent,
+            (:vnindex_point * ((price * listed_shares) / NULLIF(total_market_cap, 0)) * ((price - ref_price) / ref_price)) AS impact_value
+        FROM caps
+        ORDER BY impact_value DESC
+    """)
+    if vnindex_point is None:
+        vnindex_point = _latest_vnindex_point(db, active_date)
+    fallback_rows = [
+        dict(row._mapping)
+        for row in db.execute(
+            fallback_query,
+            {"dt": active_date, "vnindex_point": _to_float(vnindex_point)},
+        ).fetchall()
+    ]
+    impact = {
+        "positive": [row for row in fallback_rows if (row.get("impact_value") or 0) > 0][:limit],
+        "negative": [row for row in reversed(fallback_rows) if (row.get("impact_value") or 0) < 0][:limit],
+    }
+    impact.update({"trading_date": active_date, **_impact_source_meta()})
+    return impact
+
+
+def _build_sector_performance(db: Session, active_date):
+    sector_query = text("""
+        SELECT trading_date, sector, avg_change, total_stocks
+        FROM sector_performance_metrics
+        WHERE trading_date = (SELECT MAX(trading_date) FROM sector_performance_metrics)
+          AND sector IS NOT NULL
+        ORDER BY avg_change DESC
+    """)
+    try:
+        sectors = [dict(row._mapping) for row in db.execute(sector_query).fetchall()]
+    except Exception:
+        sectors = []
+
+    if sectors:
+        return sectors, True
+
+    reverse_sector = {}
+    for sector, symbols in SECTOR_MAPPING.items():
+        for symbol in symbols:
+            reverse_sector[symbol] = sector
+
+    rows = db.execute(text("""
+        SELECT
+            m.symbol,
+            m.trading_date,
+            COALESCE(m.change_percent, CASE WHEN m.ref_price > 0 THEN ((m.price - m.ref_price) / m.ref_price) * 100 ELSE 0 END) AS change_percent
+        FROM market_prices m
+        WHERE m.trading_date = :dt
+          AND m.price IS NOT NULL
+          AND m.ref_price IS NOT NULL
+    """), {"dt": active_date}).fetchall()
+
+    grouped = {}
+    leaders = {}
+    for row in rows:
+        sector = reverse_sector.get(row.symbol)
+        if not sector:
+            continue
+        change = float(row.change_percent or 0)
+        grouped.setdefault(sector, []).append(change)
+        leaders.setdefault(sector, []).append((row.symbol, change))
+
+    sectors = sorted(
+        [
+            {
+                "trading_date": active_date,
+                "sector": sector,
+                "avg_change": sum(values) / len(values),
+                "total_stocks": len(values),
+                "top_symbols": ", ".join(
+                    symbol
+                    for symbol, _ in sorted(leaders.get(sector, []), key=lambda item: item[1], reverse=True)[:3]
+                ),
+            }
+            for sector, values in grouped.items()
+        ],
+        key=lambda item: item["avg_change"],
+        reverse=True,
+    )
+    return sectors, False
 
 @router.get("/market/search")
 def search_stocks(q: str, db: Session = Depends(get_db)):
@@ -218,67 +417,35 @@ def get_active_session_date(db: Session):
 def get_top_impact(limit: int = 10, db: Session = Depends(get_db)):
     """Lọc top tác động từ market_prices & stocks (impact_metrics view)."""
     active_date = get_active_session_date(db)
-    
-    positive_query = text("SELECT symbol, sector, price, ref_price, change_percent, impact_value FROM impact_metrics WHERE impact_value > 0.001 AND trading_date = :dt ORDER BY impact_value DESC LIMIT :limit")
-    positive_rows = db.execute(positive_query, {"limit": limit, "dt": active_date}).fetchall()
-    
-    negative_query = text("SELECT symbol, sector, price, ref_price, change_percent, impact_value FROM impact_metrics WHERE impact_value < -0.001 AND trading_date = :dt ORDER BY impact_value ASC LIMIT :limit")
-    negative_rows = db.execute(negative_query, {"limit": limit, "dt": active_date}).fetchall()
-    
-    return {
-        "positive": [dict(row._mapping) for row in positive_rows],
-        "negative": [dict(row._mapping) for row in negative_rows],
-        "trading_date": active_date,
-        **_impact_source_meta(),
-    }
+    return _build_top_impact(db, active_date, limit=limit)
 
 @router.get("/foreign-trading", response_model=ForeignTradingResponse)
 def get_foreign_trading(limit: int = 10, db: Session = Depends(get_db)):
     """Lấy top mua/bán ròng của khối ngoại (ngày đầy đủ nhất)."""
-    # Use max trading_date from foreign_trading specifically to handle weekends/delays
-    from sqlalchemy.sql import func
-    active_date = db.query(func.max(ForeignTrading.trading_date)).scalar()
-    
-    if not active_date:
-        return {
-            "top_buy": [],
-            "top_sell": [],
-            "total_net_val": 0.0,
-            "source": "NO_DATA",
-            "source_label": "Chưa có dữ liệu",
-            "trading_date": None,
-            "is_eod": False,
-        }
-
-    top_buy = db.query(ForeignTrading).filter(ForeignTrading.trading_date == active_date).order_by(desc(ForeignTrading.net_val)).limit(limit).all()
-    top_sell = db.query(ForeignTrading).filter(ForeignTrading.trading_date == active_date).order_by(asc(ForeignTrading.net_val)).limit(limit).all()
-    
-    b = float(db.execute(text("SELECT SUM(f_buy_val) FROM foreign_trading WHERE trading_date = :d"), {"d": active_date}).scalar() or 0)
-    s = float(db.execute(text("SELECT SUM(f_sell_val) FROM foreign_trading WHERE trading_date = :d"), {"d": active_date}).scalar() or 0)
-    
-    return {
-        "top_buy": top_buy,
-        "top_sell": top_sell,
-        "total_net_val": b - s,
-        "trading_date": active_date,
-        **_foreign_source_meta(active_date),
-    }
+    return _build_foreign_payload(db, limit=limit)
 
 @router.get("/sector-performance", response_model=SectorPerformanceResponse)
 def get_sector_performance(db: Session = Depends(get_db)):
     """Lấy hiệu suất ngành (Tăng/giảm trung bình)."""
-    query = text("SELECT trading_date, sector, avg_change, total_stocks FROM sector_performance_metrics WHERE trading_date = (SELECT MAX(trading_date) FROM sector_performance_metrics) AND sector IS NOT NULL ORDER BY avg_change DESC")
-    rows = db.execute(query).fetchall()
-    sectors = [dict(row._mapping) for row in rows]
+    active_date = get_active_session_date(db)
+    sectors, sectors_from_view = _build_sector_performance(db, active_date)
     return {
         "sectors": sectors,
         "trading_date": sectors[0]["trading_date"] if sectors else None,
-        **_sector_source_meta(True),
+        **_sector_source_meta(sectors_from_view),
     }
 
 @router.post("/sync-eod")
 async def trigger_sync_eod():
     """Bắt đầu đồng bộ dữ liệu cuối ngày (EOD) cho toàn bộ thị trường."""
+    if not EOD_SYNC_ENABLED:
+        return {
+            "status": "paused",
+            "type": "EOD",
+            "started": False,
+            "message": "EOD Sync đang tạm dừng; chưa có job nào được khởi chạy.",
+        }
+
     all_symbols = []
     for symbols in SECTOR_MAPPING.values():
         all_symbols.extend(symbols)
@@ -453,167 +620,14 @@ def get_market_snapshot(db: Session = Depends(get_db)):
         vnindex = None
 
     # 2. Foreign Trade
-    from sqlalchemy.sql import func
-    ft_date = (
-        db.query(func.max(ForeignTrading.trading_date))
-        .filter((ForeignTrading.f_buy_val != 0) | (ForeignTrading.f_sell_val != 0) | (ForeignTrading.net_val != 0))
-        .scalar()
-    )
-    foreign = {
-        "top_buy": [],
-        "top_sell": [],
-        "total_net_val": 0.0,
-        "source": "NO_DATA",
-        "source_label": "Chưa có dữ liệu",
-        "trading_date": None,
-        "is_eod": False,
-    }
-    if ft_date:
-        top_buy = (
-            db.query(ForeignTrading)
-            .filter(ForeignTrading.trading_date == ft_date, ForeignTrading.net_val > 0)
-            .order_by(desc(ForeignTrading.net_val))
-            .limit(10)
-            .all()
-        )
-        top_sell = (
-            db.query(ForeignTrading)
-            .filter(ForeignTrading.trading_date == ft_date, ForeignTrading.net_val < 0)
-            .order_by(asc(ForeignTrading.net_val))
-            .limit(10)
-            .all()
-        )
-        b = float(db.execute(text("SELECT SUM(f_buy_val) FROM foreign_trading WHERE trading_date = :d"), {"d": ft_date}).scalar() or 0)
-        s = float(db.execute(text("SELECT SUM(f_sell_val) FROM foreign_trading WHERE trading_date = :d"), {"d": ft_date}).scalar() or 0)
-        foreign = {
-            "top_buy": top_buy,
-            "top_sell": top_sell,
-            "total_net_val": b - s,
-            "trading_date": ft_date,
-            **_foreign_source_meta(ft_date),
-        }
+    foreign = _build_foreign_payload(db, limit=10, only_directional=True)
 
     # 3. Top Impact
     active_date = get_active_session_date(db)
-    pos_query = text("""
-        SELECT symbol, sector, price, ref_price, change_percent, impact_value
-        FROM impact_metrics
-        WHERE impact_value > 0 AND trading_date = :dt
-        ORDER BY impact_value DESC
-        LIMIT 10
-    """)
-    neg_query = text("""
-        SELECT symbol, sector, price, ref_price, change_percent, impact_value
-        FROM impact_metrics
-        WHERE impact_value < 0 AND trading_date = :dt
-        ORDER BY impact_value ASC
-        LIMIT 10
-    """)
-    try:
-        impact = {
-            "positive": [dict(r._mapping) for r in db.execute(pos_query, {"dt": active_date}).fetchall()],
-            "negative": [dict(r._mapping) for r in db.execute(neg_query, {"dt": active_date}).fetchall()]
-        }
-    except Exception:
-        impact = {"positive": [], "negative": []}
-    if not impact["positive"] and not impact["negative"]:
-        fallback_query = text("""
-            WITH caps AS (
-                SELECT
-                    m.symbol,
-                    s.sector,
-                    m.price,
-                    m.ref_price,
-                    COALESCE(m.change_percent, CASE WHEN m.ref_price > 0 THEN ((m.price - m.ref_price) / m.ref_price) * 100 ELSE 0 END) AS change_percent,
-                    COALESCE(NULLIF(s.listed_shares, 0), 1) AS listed_shares,
-                    SUM(m.price * COALESCE(NULLIF(s.listed_shares, 0), 1)) OVER () AS total_market_cap
-                FROM market_prices m
-                LEFT JOIN stocks s ON m.symbol = s.symbol
-                WHERE m.trading_date = :dt
-                  AND m.price IS NOT NULL
-                  AND m.ref_price IS NOT NULL
-                  AND m.ref_price > 0
-            )
-            SELECT
-                symbol,
-                sector,
-                price,
-                ref_price,
-                change_percent,
-                (:vnindex_point * ((price * listed_shares) / NULLIF(total_market_cap, 0)) * ((price - ref_price) / ref_price)) AS impact_value
-            FROM caps
-            ORDER BY impact_value DESC
-        """)
-        fallback_rows = [
-            dict(r._mapping)
-            for r in db.execute(
-                fallback_query,
-                {"dt": active_date, "vnindex_point": (vnindex or {}).get("price") or 0},
-            ).fetchall()
-        ]
-        impact = {
-            "positive": [r for r in fallback_rows if (r.get("impact_value") or 0) > 0][:10],
-            "negative": [r for r in reversed(fallback_rows) if (r.get("impact_value") or 0) < 0][:10],
-        }
-    impact.update({"trading_date": active_date, **_impact_source_meta()})
+    impact = _build_top_impact(db, active_date, limit=10, vnindex_point=(vnindex or {}).get("price") or 0)
 
     # 4. Sector Performance
-    sector_query = text("""
-        SELECT trading_date, sector, avg_change, total_stocks
-        FROM sector_performance_metrics
-        WHERE trading_date = (SELECT MAX(trading_date) FROM sector_performance_metrics)
-          AND sector IS NOT NULL
-        ORDER BY avg_change DESC
-    """)
-    try:
-        sectors = [dict(r._mapping) for r in db.execute(sector_query).fetchall()]
-    except Exception:
-        sectors = []
-    sectors_from_view = bool(sectors)
-    if not sectors:
-        reverse_sector = {}
-        for sector, symbols in SECTOR_MAPPING.items():
-            for symbol in symbols:
-                reverse_sector[symbol] = sector
-
-        rows = db.execute(text("""
-            SELECT
-                m.symbol,
-                m.trading_date,
-                COALESCE(m.change_percent, CASE WHEN m.ref_price > 0 THEN ((m.price - m.ref_price) / m.ref_price) * 100 ELSE 0 END) AS change_percent
-            FROM market_prices m
-            WHERE m.trading_date = :dt
-              AND m.price IS NOT NULL
-              AND m.ref_price IS NOT NULL
-        """), {"dt": active_date}).fetchall()
-
-        grouped = {}
-        leaders = {}
-        for row in rows:
-            sector = reverse_sector.get(row.symbol)
-            if not sector:
-                continue
-            change = float(row.change_percent or 0)
-            grouped.setdefault(sector, []).append(change)
-            leaders.setdefault(sector, []).append((row.symbol, change))
-
-        sectors = sorted(
-            [
-                {
-                    "trading_date": active_date,
-                    "sector": sector,
-                    "avg_change": sum(values) / len(values),
-                    "total_stocks": len(values),
-                    "top_symbols": ", ".join(
-                        symbol
-                        for symbol, _ in sorted(leaders.get(sector, []), key=lambda item: item[1], reverse=True)[:3]
-                    ),
-                }
-                for sector, values in grouped.items()
-            ],
-            key=lambda item: item["avg_change"],
-            reverse=True,
-        )
+    sectors, sectors_from_view = _build_sector_performance(db, active_date)
 
     return {
         "vnindex": vnindex,

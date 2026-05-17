@@ -72,22 +72,22 @@ function LatestDailyBriefView() {
   }
 
   return (
-    <section className="rounded-lg border border-panel-border bg-panel p-5 shadow-md">
-      <div className="flex flex-col gap-2 border-b border-panel-border pb-4 sm:flex-row sm:items-start sm:justify-between">
+    <section className="rounded border border-panel-border bg-panel">
+      <div className="flex flex-col gap-2 border-b border-panel-border px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <div className="text-[11px] font-bold uppercase text-zinc-500">Nhận định thị trường</div>
-          <h3 className="mt-1 text-xl font-bold text-zinc-100">{brief.title}</h3>
-          <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-zinc-500">
+          <div className="text-[10px] font-bold uppercase text-zinc-600">Nhận định thị trường</div>
+          <h3 className="mt-1 text-sm font-bold text-zinc-100">{brief.title}</h3>
+          <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-zinc-500">
             <span>Người phụ trách: {brief.broker_name || "Brokerz"}</span>
             <span>Công bố: {formatDateTime(brief.published_at)}</span>
           </div>
         </div>
-        <span className="inline-flex w-fit items-center gap-1 rounded border border-market-up/30 bg-market-up/10 px-2.5 py-1 text-[11px] font-bold text-market-up">
+        <span className="inline-flex w-fit items-center gap-1 rounded border border-market-up/30 bg-market-up/10 px-2 py-1 text-[10px] font-bold text-market-up">
           <Check className="h-3.5 w-3.5" />
           Đã công bố
         </span>
       </div>
-      <article className="prose prose-invert prose-zinc mt-5 max-w-none prose-p:leading-relaxed prose-headings:text-zinc-100 prose-a:text-primary">
+      <article className="max-h-[300px] overflow-y-auto px-4 py-3 text-[13px] leading-6 text-zinc-200 [&_h1]:mb-2 [&_h1]:text-sm [&_h1]:font-bold [&_h2]:mb-2 [&_h2]:text-sm [&_h2]:font-bold [&_p]:mb-3 [&_strong]:font-bold [&_strong]:text-zinc-100">
         <ReactMarkdown>{brief.content_markdown}</ReactMarkdown>
       </article>
     </section>
@@ -162,15 +162,15 @@ export default function ReportGenerator({ isBroker = true }: { isBroker?: boolea
   };
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
       <div className="lg:col-span-1">
         <ExpertJudgmentForm onSubmit={handleGenerate} isGenerating={isGenerating} />
       </div>
 
       <div className="flex h-full flex-col lg:col-span-2">
-        <div className="flex flex-col gap-3 rounded-t-lg border border-panel-border bg-[#1a1a1a] p-3 shadow-md sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 rounded-t border border-panel-border bg-[#1a1a1a] px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="flex items-center gap-2 font-bold text-zinc-100">
+            <h3 className="flex items-center gap-2 text-sm font-bold text-zinc-100">
               Không gian soạn nhận định
               {brief?.status === "PUBLISHED" && <span className="h-2 w-2 rounded-full bg-market-up" />}
             </h3>
@@ -208,12 +208,12 @@ export default function ReportGenerator({ isBroker = true }: { isBroker?: boolea
           </div>
         </div>
 
-        <div className="grid min-h-[520px] flex-1 grid-cols-1 overflow-hidden rounded-b-lg border border-t-0 border-panel-border bg-panel shadow-md xl:grid-cols-2">
+        <div className="grid min-h-[440px] flex-1 grid-cols-1 overflow-hidden rounded-b border border-t-0 border-panel-border bg-panel xl:grid-cols-2">
           <div className="relative border-b border-panel-border p-4 xl:border-b-0 xl:border-r">
             {isGenerating && (
               <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-bl-lg bg-panel/85 backdrop-blur-sm">
                 <Bot className="mb-4 h-12 w-12 animate-bounce text-primary" />
-                <h3 className="text-lg font-bold text-zinc-200">AI đang soạn bản nháp...</h3>
+                <h3 className="text-base font-bold text-zinc-200">AI đang soạn bản nháp...</h3>
                 <p className="mt-1 text-sm text-zinc-500">
                   Broker vẫn là người duyệt cuối cùng trước khi nhà đầu tư nhìn thấy.
                 </p>
@@ -231,14 +231,14 @@ export default function ReportGenerator({ isBroker = true }: { isBroker?: boolea
               />
             </label>
 
-            <label className="flex h-[420px] flex-col gap-1.5 text-xs font-bold text-zinc-400">
+            <label className="flex h-[340px] flex-col gap-1.5 text-xs font-bold text-zinc-400">
               Nội dung markdown
               <textarea
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 disabled={!brief || brief.status !== "DRAFT"}
                 placeholder="Bản nháp AI sẽ xuất hiện ở đây sau khi tạo..."
-                className="h-full resize-none rounded border border-panel-border bg-zinc-900 p-3 text-sm leading-relaxed text-zinc-100 outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
+                className="h-full resize-none rounded border border-panel-border bg-zinc-900 p-3 font-mono text-xs leading-5 text-zinc-100 outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
               />
             </label>
 
@@ -257,11 +257,11 @@ export default function ReportGenerator({ isBroker = true }: { isBroker?: boolea
               Xem trước cho nhà đầu tư
             </div>
             {content ? (
-              <article className="prose prose-invert prose-zinc max-w-none prose-p:leading-relaxed prose-headings:text-zinc-100 prose-a:text-primary">
+              <article className="max-h-[405px] overflow-y-auto text-[13px] leading-6 text-zinc-200 [&_h1]:mb-2 [&_h1]:text-sm [&_h1]:font-bold [&_h2]:mb-2 [&_h2]:text-sm [&_h2]:font-bold [&_p]:mb-3 [&_strong]:font-bold [&_strong]:text-zinc-100">
                 <ReactMarkdown>{content}</ReactMarkdown>
               </article>
             ) : (
-              <div className="flex h-[420px] items-center justify-center rounded border border-dashed border-panel-border text-center text-sm text-zinc-500">
+              <div className="flex h-[340px] items-center justify-center rounded border border-dashed border-panel-border text-center text-sm text-zinc-500">
                 Tạo bản nháp để xem trước nội dung trước khi công bố.
               </div>
             )}
