@@ -2,7 +2,7 @@ import os
 from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from src.api.routers import market, report, portfolio, profile, inquiry, notification
+from src.api.routers import dashboard_layout, market, report, portfolio, profile, inquiry, notification
 from src.modules.identity import router as identity_router
 from src.modules.workspace import router as workspace_router
 from src.modules.recommendations import router as recommendations_router
@@ -94,6 +94,7 @@ app.include_router(portfolio.router, dependencies=jwt_deps)
 app.include_router(profile.router, dependencies=jwt_deps)
 app.include_router(inquiry.router, dependencies=jwt_deps)
 app.include_router(notification.router, dependencies=jwt_deps)
+app.include_router(dashboard_layout.router)
 app.include_router(identity_router.router)
 app.include_router(workspace_router.router)
 app.include_router(recommendations_router.router)

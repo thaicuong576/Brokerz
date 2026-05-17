@@ -121,6 +121,7 @@ class DailyBrief(Base):
 class Portfolio(Base):
     __tablename__ = "portfolios"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("broker_workspaces.id", ondelete="CASCADE"), index=True, nullable=True)
     name = Column(String, nullable=False)
     description = Column(String)
     is_public = Column(Boolean, default=True)
@@ -136,7 +137,22 @@ class PortfolioItem(Base):
     symbol = Column(String(10), nullable=False)
     weight = Column(Float, nullable=False)
     entry_price = Column(Float)
+    active_thesis = Column(Text, nullable=True)
+    source_recommendation_id = Column(UUID(as_uuid=True), ForeignKey("ws_recommendations.id", ondelete="SET NULL"), nullable=True)
     reason = Column(String)
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
+
+class PortfolioEvent(Base):
+    __tablename__ = "portfolio_events"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("broker_workspaces.id", ondelete="CASCADE"), index=True, nullable=False)
+    recommendation_id = Column(UUID(as_uuid=True), ForeignKey("ws_recommendations.id", ondelete="SET NULL"), index=True, nullable=True)
+    event_type = Column(String(40), nullable=False)
+    before_state = Column(Text, nullable=True)
+    after_state = Column(Text, nullable=True)
+    note = Column(Text, nullable=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
     created_at = Column(DateTime(timezone=True), default=func.now())
 
 class Inquiry(Base):
@@ -171,7 +187,8 @@ class WsRecommendation(Base):
     broker_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), index=True, nullable=False)
     symbol = Column(String(10), nullable=False)
     side = Column(String(4), nullable=False)  # BUY or SELL
-    status = Column(String(20), nullable=False, default="DRAFT")  # DRAFT, ACTIVE, CLOSED, ARCHIVED
+    action_type = Column(String(30), nullable=False, default="BUY")
+    status = Column(String(30), nullable=False, default="DRAFT")  # DRAFT, PUBLISHED, APPLIED_TO_PORTFOLIO, PUBLISHED_ONLY, CLOSED, ARCHIVED
     entry_price = Column(Float, nullable=True)
     target_price = Column(Float, nullable=True)
     cutloss_price = Column(Float, nullable=True)
@@ -179,13 +196,24 @@ class WsRecommendation(Base):
     risk_note = Column(String, nullable=True)
     closed_reason = Column(String, nullable=True)  # TARGET_REACHED, CUTLOSS_HIT, MANUAL
     published_at = Column(DateTime(timezone=True), nullable=True)
+    applied_at = Column(DateTime(timezone=True), nullable=True)
+    applied_portfolio_event_id = Column(UUID(as_uuid=True), ForeignKey("portfolio_events.id", ondelete="SET NULL"), nullable=True)
+    parent_recommendation_id = Column(UUID(as_uuid=True), ForeignKey("ws_recommendations.id", ondelete="SET NULL"), nullable=True)
     closed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=func.now())
     updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
     broker = relationship("Profile", foreign_keys=[broker_id])
     workspace = relationship("BrokerWorkspace", foreign_keys=[workspace_id])
+    parent_recommendation = relationship("WsRecommendation", remote_side=[id], foreign_keys=[parent_recommendation_id])
     events = relationship("RecommendationEvent", backref="recommendation", cascade="all, delete-orphan", order_by="RecommendationEvent.created_at")
+
+class DashboardLayout(Base):
+    __tablename__ = "dashboard_layouts"
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("broker_workspaces.id", ondelete="CASCADE"), primary_key=True)
+    layout_json = Column(Text, nullable=False)
+    updated_by = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
 class RecommendationEvent(Base):
     """Immutable audit trail for recommendation lifecycle changes."""

@@ -25,8 +25,8 @@ typography:
   ui:
     fontFamily: Inter, Segoe UI, Roboto, Arial, sans-serif
   compact:
-    fontFamily: Arial Narrow, Roboto Condensed, Inter Tight, Segoe UI, Arial, sans-serif
-    usage: Dense labels, tickers, market numbers, badges, ratios, and compact tables.
+    fontFamily: Segoe UI, Inter, Roboto, Arial, sans-serif
+    usage: Market numbers, tickers, badges, ratios, and compact tables. Do not use condensed or narrow fonts.
   h1:
     fontFamily: Inter
     fontSize: 1.125rem
@@ -88,7 +88,7 @@ Brokerz should feel like a professional market workstation, not a lending campai
 3. Use green only for positive market movement, success states, and confirmed live market state.
 4. Use red, green, and yellow strictly for market semantics unless a component explicitly needs status color.
 5. Keep dashboard cards flat: thin border, no glow, no heavy shadow.
-6. Use compact sans plus tabular numerals for tickers, prices, percentages, volume, and ratios.
+6. Use regular-width sans plus tabular numerals for tickers, prices, percentages, volume, and ratios. Avoid condensed/narrow number fonts.
 7. Avoid fake metrics, decorative finance widgets, oversized hero text, and uppercase-heavy copy.
 8. Source labels should be available but quiet: `LIVE`, `TEMP`, `SRC`, `EOD`.
 9. Daily brief content should be readable in compact editorial blocks, not one giant wall of bold text.

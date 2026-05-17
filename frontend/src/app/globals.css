@@ -23,7 +23,7 @@
   --color-market-ceil: #c018df;
   --color-market-floor: #29c1c9;
   --font-sans: Inter, "Segoe UI", Roboto, Arial, Helvetica, sans-serif;
-  --font-compact: "Arial Narrow", "Roboto Condensed", "Inter Tight", "Segoe UI", Arial, Helvetica, sans-serif;
+  --font-compact: "Segoe UI", Inter, Roboto, Arial, Helvetica, sans-serif;
 }
 
 @layer base {

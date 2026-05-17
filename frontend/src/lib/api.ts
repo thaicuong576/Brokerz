@@ -72,18 +72,48 @@ export interface WsRecommendationResponse {
   broker_id: string;
   symbol: string;
   side: "BUY" | "SELL";
-  status: "DRAFT" | "ACTIVE" | "CLOSED" | "ARCHIVED";
+  action_type: "BUY" | "SELL" | "HOLD" | "CLOSE" | "REVERSE";
+  status: "DRAFT" | "PUBLISHED" | "PUBLISHED_ONLY" | "APPLIED_TO_PORTFOLIO" | "CLOSED" | "ARCHIVED";
   entry_price?: number | null;
   target_price?: number | null;
   cutloss_price?: number | null;
   thesis?: string | null;
   risk_note?: string | null;
   closed_reason?: string | null;
+  applied_at?: string | null;
+  applied_portfolio_event_id?: string | null;
+  parent_recommendation_id?: string | null;
   current_price?: number | null;
   performance_pct?: number | null;
   published_at?: string | null;
   closed_at?: string | null;
   created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface PortfolioItemResponse {
+  symbol: string;
+  weight: number;
+  entry_price?: number | null;
+  active_thesis?: string | null;
+  source_recommendation_id?: string | null;
+  updated_at?: string | null;
+  reason?: string | null;
+}
+
+export interface PortfolioResponse {
+  id?: string | null;
+  workspace_id?: string | null;
+  name: string;
+  description?: string | null;
+  created_by?: string | null;
+  created_at?: string | null;
+  items: PortfolioItemResponse[];
+}
+
+export interface DashboardLayoutResponse {
+  workspace_id?: string | null;
+  layout: Array<{ instanceId: string; widgetId: string; order?: number }>;
   updated_at?: string | null;
 }
 
@@ -191,6 +221,19 @@ export const apiService = {
     return response.json();
   },
 
+  async getDashboardLayout(): Promise<DashboardLayoutResponse> {
+    const response = await request("/dashboard-layout");
+    return response.json();
+  },
+
+  async saveDashboardLayout(layout: Array<{ instanceId: string; widgetId: string; order?: number }>): Promise<DashboardLayoutResponse> {
+    const response = await request("/dashboard-layout", {
+      method: "PUT",
+      body: JSON.stringify({ layout }),
+    });
+    return response.json();
+  },
+
   async getLatestStocks() {
     const response = await request("/stocks/latest");
     return response.json();
@@ -198,6 +241,11 @@ export const apiService = {
 
   async getMyStrategy(_userId: string) {
     const response = await request("/portfolio/my-strategy");
+    return response.json();
+  },
+
+  async getCurrentPortfolio(): Promise<PortfolioResponse | null> {
+    const response = await request("/portfolio/current");
     return response.json();
   },
 
@@ -225,6 +273,7 @@ export const apiService = {
   async createWsRecommendation(data: {
     symbol: string;
     side: string;
+    action_type?: string;
     entry_price?: number;
     target_price?: number;
     cutloss_price?: number;
@@ -240,6 +289,34 @@ export const apiService = {
 
   async publishRecommendation(recId: string): Promise<WsRecommendationResponse> {
     const response = await request(`/recommendations/${recId}/publish`, { method: "POST" });
+    return response.json();
+  },
+
+  async applyRecommendationToPortfolio(recId: string, data: {
+    weight: number;
+    applied_price?: number;
+    note?: string;
+  }): Promise<WsRecommendationResponse> {
+    const response = await request(`/recommendations/${recId}/apply-to-portfolio`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    return response.json();
+  },
+
+  async reverseRecommendation(recId: string, data: {
+    close_price?: number;
+    close_note?: string;
+    new_entry_price?: number;
+    target_price?: number;
+    cutloss_price?: number;
+    thesis?: string;
+    risk_note?: string;
+  }): Promise<WsRecommendationResponse> {
+    const response = await request(`/recommendations/${recId}/reverse`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
     return response.json();
   },
 

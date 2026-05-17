@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { X, Clock, Edit, FileText, CheckCircle2, XCircle, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CheckCircle2, Clock, Edit3, FileText, History, Send, X, XCircle } from "lucide-react";
 import { apiService, RecommendationEventResponse, WsRecommendationResponse } from "@/lib/api";
 
 interface RecommendationHistoryModalProps {
@@ -11,155 +10,166 @@ interface RecommendationHistoryModalProps {
   recId: string | null;
 }
 
+const eventLabels: Record<string, string> = {
+  CREATED: "Tạo bản nháp",
+  PUBLISHED: "Công bố",
+  THESIS_UPDATED: "Cập nhật luận điểm",
+  TARGET_UPDATED: "Cập nhật giá mục tiêu",
+  CUTLOSS_UPDATED: "Cập nhật giá cắt lỗ",
+  APPLIED_TO_PORTFOLIO: "Áp dụng vào danh mục",
+  CLOSED: "Đóng khuyến nghị",
+  ARCHIVED: "Lưu trữ",
+};
+
+function eventIcon(eventType: string) {
+  switch (eventType) {
+    case "CREATED":
+      return FileText;
+    case "PUBLISHED":
+      return Send;
+    case "THESIS_UPDATED":
+    case "TARGET_UPDATED":
+    case "CUTLOSS_UPDATED":
+      return Edit3;
+    case "APPLIED_TO_PORTFOLIO":
+      return CheckCircle2;
+    case "CLOSED":
+    case "ARCHIVED":
+      return XCircle;
+    default:
+      return Clock;
+  }
+}
+
+function parseState(value?: string | null) {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function formatNumber(value?: number | null) {
+  if (value === undefined || value === null) return "--";
+  return value.toLocaleString("vi-VN");
+}
+
+function actionLabel(action?: string | null) {
+  switch (action) {
+    case "BUY":
+      return "Mua";
+    case "SELL":
+      return "Bán";
+    case "HOLD":
+      return "Nắm giữ";
+    case "CLOSE":
+      return "Đóng";
+    case "REVERSE":
+      return "Đảo chiều";
+    default:
+      return action || "--";
+  }
+}
+
 export function RecommendationHistoryModal({ isOpen, onClose, recId }: RecommendationHistoryModalProps) {
   const [history, setHistory] = useState<RecommendationEventResponse[]>([]);
   const [rec, setRec] = useState<WsRecommendationResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (isOpen && recId) {
-      setLoading(true);
-      Promise.all([
-        apiService.getWsRecommendation(recId),
-        apiService.getRecommendationHistory(recId)
-      ])
-        .then(([recData, historyData]) => {
-          setRec(recData);
-          setHistory(historyData);
-        })
-        .catch(err => console.error("Failed to load history", err))
-        .finally(() => setLoading(false));
-    }
+    if (!isOpen || !recId) return;
+
+    setLoading(true);
+    Promise.all([apiService.getWsRecommendation(recId), apiService.getRecommendationHistory(recId)])
+      .then(([recData, historyData]) => {
+        setRec(recData);
+        setHistory(historyData);
+      })
+      .catch((error) => console.error("Không thể tải nhật ký thay đổi", error))
+      .finally(() => setLoading(false));
   }, [isOpen, recId]);
 
   if (!isOpen) return null;
 
-  const getEventIcon = (eventType: string) => {
-    switch (eventType) {
-      case "CREATED": return <FileText className="w-4 h-4 text-emerald-400" />;
-      case "PUBLISHED": return <CheckCircle2 className="w-4 h-4 text-blue-400" />;
-      case "THESIS_UPDATED": return <Edit className="w-4 h-4 text-yellow-400" />;
-      case "CLOSED": return <XCircle className="w-4 h-4 text-red-400" />;
-      case "ARCHIVED": return <Trash2 className="w-4 h-4 text-muted-foreground" />;
-      default: return <Clock className="w-4 h-4 text-white/50" />;
-    }
-  };
-
-  const formatEventName = (eventType: string) => {
-    switch (eventType) {
-      case "CREATED": return "Tạo Bản Nháp";
-      case "PUBLISHED": return "Phát Hành";
-      case "THESIS_UPDATED": return "Cập Nhật Nhận Định";
-      case "CLOSED": return "Đóng Khuyến Nghị";
-      case "ARCHIVED": return "Lưu Trữ";
-      default: return eventType;
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-      />
-      
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="relative w-full max-w-2xl max-h-[85vh] glass p-0 rounded-[32px] border border-primary/30 shadow-[0_0_50px_rgba(0,240,255,0.1)] flex flex-col overflow-hidden"
-      >
-        <div className="p-6 md:p-8 border-b border-white/5 flex items-center justify-between shrink-0">
+      <button aria-label="Đóng" onClick={onClose} className="absolute inset-0 bg-zinc-950/70 backdrop-blur-sm" />
+
+      <div className="relative flex max-h-[86vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-panel-border bg-panel shadow-2xl">
+        <div className="flex items-center justify-between border-b border-panel-border px-5 py-4">
           <div>
-            <h3 className="font-black text-2xl tracking-tighter uppercase text-white flex items-center gap-3">
-              <span className="text-primary">{rec?.symbol}</span>
-              <span className="text-[10px] font-bold text-muted-foreground px-2 py-1 rounded-md bg-white/5 border border-white/10 tracking-widest uppercase">
-                {rec?.side === "BUY" ? "MUA" : "BÁN"}
-              </span>
+            <div className="flex items-center gap-2 text-sm font-semibold text-zinc-500">
+              <History className="h-4 w-4" />
+              Nhật ký thay đổi
+            </div>
+            <h3 className="mt-1 text-xl font-semibold text-zinc-900">
+              {rec?.symbol || "--"} · {actionLabel(rec?.action_type || rec?.side)}
             </h3>
-            <p className="text-xs text-muted-foreground mt-1 font-medium tracking-wide">
-              Lịch sử vòng đời & cập nhật nhận định
-            </p>
           </div>
-          <button 
-            onClick={onClose}
-            className="p-3 rounded-2xl hover:bg-white/10 text-muted-foreground hover:text-white transition-all group shrink-0"
-          >
-            <X className="w-6 h-6 group-hover:scale-110 transition-transform" />
+          <button onClick={onClose} className="rounded border border-panel-border p-2 text-zinc-500 hover:text-zinc-900">
+            <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 md:p-8 custom-scrollbar">
+        <div className="overflow-y-auto px-5 py-5">
           {loading ? (
-            <div className="flex items-center justify-center h-40">
-              <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-            </div>
+            <div className="flex h-36 items-center justify-center text-sm text-zinc-500">Đang tải nhật ký...</div>
           ) : history.length === 0 ? (
-            <div className="flex items-center justify-center h-40 text-muted-foreground text-sm font-medium italic">
-              Không có dữ liệu lịch sử
+            <div className="rounded border border-dashed border-panel-border py-10 text-center text-sm text-zinc-500">
+              Chưa có thay đổi nào được ghi nhận.
             </div>
           ) : (
-            <div className="relative border-l-2 border-white/10 ml-4 space-y-8 pb-4">
-              {history.map((event, index) => {
-                const isFirst = index === 0; // Most recent event
+            <div className="space-y-3">
+              {history.map((event) => {
+                const Icon = eventIcon(event.event_type);
+                const afterState = parseState(event.after_state);
                 return (
-                  <div key={event.id} className="relative pl-8">
-                    <div className="absolute -left-[17px] top-0 w-8 h-8 rounded-full bg-black border-2 border-white/10 flex items-center justify-center z-10 shadow-lg">
-                      {getEventIcon(event.event_type)}
-                    </div>
-                    
-                    <div className={`p-4 rounded-2xl border ${isFirst ? 'bg-primary/5 border-primary/20' : 'bg-white/5 border-white/5'} hover:bg-white/10 transition-colors`}>
-                      <div className="flex items-start justify-between gap-4 mb-2">
-                        <h4 className={`text-sm font-black tracking-tight uppercase ${isFirst ? 'text-primary' : 'text-white'}`}>
-                          {formatEventName(event.event_type)}
-                        </h4>
-                        <span className="text-[10px] text-muted-foreground font-bold tracking-widest shrink-0">
-                          {event.created_at ? new Date(event.created_at).toLocaleString('vi-VN') : ""}
+                  <div key={event.id} className="rounded border border-panel-border bg-white p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-8 w-8 items-center justify-center rounded bg-zinc-100 text-primary">
+                          <Icon className="h-4 w-4" />
                         </span>
+                        <div>
+                          <div className="text-sm font-semibold text-zinc-900">
+                            {eventLabels[event.event_type] || event.event_type}
+                          </div>
+                          <div className="text-xs text-zinc-500">
+                            {event.created_at ? new Date(event.created_at).toLocaleString("vi-VN") : "--"}
+                          </div>
+                        </div>
                       </div>
-                      
-                      {event.note && (
-                        <div className="text-xs text-white/80 font-medium italic bg-black/40 p-3 rounded-xl border border-white/5 mb-3">
-                          "{event.note}"
-                        </div>
-                      )}
-
-                      {event.after_state && (
-                        <div className="grid grid-cols-2 gap-4 mt-3">
-                          {(() => {
-                            try {
-                              const stateObj = JSON.parse(event.after_state);
-                              return (
-                                <>
-                                  {stateObj.target_price !== undefined && (
-                                    <div className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
-                                      Target: <span className="text-emerald-400 ml-1">{stateObj.target_price}</span>
-                                    </div>
-                                  )}
-                                  {stateObj.cutloss_price !== undefined && (
-                                    <div className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
-                                      Cutloss: <span className="text-red-400 ml-1">{stateObj.cutloss_price}</span>
-                                    </div>
-                                  )}
-                                </>
-                              );
-                            } catch (e) {
-                              return null;
-                            }
-                          })()}
-                        </div>
-                      )}
                     </div>
+
+                    {event.note && <div className="mt-3 rounded bg-zinc-50 px-3 py-2 text-sm text-zinc-700">{event.note}</div>}
+
+                    {afterState && !Array.isArray(afterState) && (
+                      <div className="mt-3 grid gap-2 text-xs text-zinc-600 sm:grid-cols-3">
+                        {"status" in afterState && (
+                          <div>
+                            Trạng thái: <span className="font-semibold text-zinc-900">{afterState.status}</span>
+                          </div>
+                        )}
+                        {"target_price" in afterState && (
+                          <div>
+                            Mục tiêu: <span className="font-semibold text-emerald-700">{formatNumber(afterState.target_price)}</span>
+                          </div>
+                        )}
+                        {"cutloss_price" in afterState && (
+                          <div>
+                            Cắt lỗ: <span className="font-semibold text-red-700">{formatNumber(afterState.cutloss_price)}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
           )}
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }
