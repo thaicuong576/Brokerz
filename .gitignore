@@ -60,7 +60,6 @@ non_relevant/
 # chroma_db/
 process_pdfs.py
 .agent
-*.md
 !frontend/DESIGN.md
 # *.json
 *.csv
