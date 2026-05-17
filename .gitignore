@@ -61,6 +61,7 @@ non_relevant/
 process_pdfs.py
 .agent
 *.md
+!frontend/DESIGN.md
 # *.json
 *.csv
 .env.local

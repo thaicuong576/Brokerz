@@ -238,7 +238,7 @@ export default function ReportGenerator({ isBroker = true }: { isBroker?: boolea
                 onChange={(e) => setContent(e.target.value)}
                 disabled={!brief || brief.status !== "DRAFT"}
                 placeholder="Bản nháp AI sẽ xuất hiện ở đây sau khi tạo..."
-                className="h-full resize-none rounded border border-panel-border bg-zinc-900 p-3 font-mono text-xs leading-5 text-zinc-100 outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
+                className="h-full resize-none rounded border border-panel-border bg-zinc-900 p-3 font-compact text-xs leading-5 text-zinc-100 outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
               />
             </label>
 

@@ -3,38 +3,38 @@
 @theme {
   --color-primary: #f97316;
   --color-primary-hover: #fb923c;
-  --color-primary-foreground: #111111;
-  --color-background: #0a0a0a;
-  --color-foreground: #ededed;
-  --color-card: #141414;
-  --color-card-foreground: #ededed;
-  --color-muted: #1f1f1f;
-  --color-muted-foreground: #a1a1aa;
+  --color-primary-foreground: #020617;
+  --color-background: #020617;
+  --color-foreground: #e5e7eb;
+  --color-card: #111827;
+  --color-card-foreground: #e5e7eb;
+  --color-muted: #1e293b;
+  --color-muted-foreground: #94a3b8;
   --color-accent: #f97316;
-  --color-accent-foreground: #111111;
-  --color-border: #262626;
-  --color-panel: #141414;
-  --color-panel-border: #262626;
+  --color-accent-foreground: #020617;
+  --color-border: #243244;
+  --color-panel: #111827;
+  --color-panel-border: #243244;
   --color-brand: #f97316;
   --color-brand-hover: #fb923c;
-  --color-market-up: #00d26a;
-  --color-market-down: #fc5757;
-  --color-market-ref: #f7ca49;
+  --color-market-up: #22c55e;
+  --color-market-down: #ef4444;
+  --color-market-ref: #facc15;
   --color-market-ceil: #c018df;
   --color-market-floor: #29c1c9;
   --font-sans: Inter, "Segoe UI", Roboto, Arial, Helvetica, sans-serif;
-  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --font-compact: "Arial Narrow", "Roboto Condensed", "Inter Tight", "Segoe UI", Arial, Helvetica, sans-serif;
 }
 
 @layer base {
   html {
-    font-family: Inter, "Segoe UI", Roboto, Arial, Helvetica, sans-serif;
+    font-family: var(--font-sans);
   }
 
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
-    font-family: Inter, "Segoe UI", Roboto, Arial, Helvetica, sans-serif;
+    font-family: var(--font-sans);
     font-feature-settings: "tnum" 1, "rlig" 1, "calt" 1;
   }
 
@@ -45,7 +45,7 @@
 
 @layer utilities {
   .glass {
-    background: rgba(20, 20, 20, 0.82);
+    background: rgba(17, 24, 39, 0.86);
     border: 1px solid var(--color-panel-border);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
@@ -55,6 +55,22 @@
   .cyan-border-glow {
     text-shadow: none;
     box-shadow: none;
+  }
+
+  .terminal-input {
+    width: 100%;
+    border-radius: 4px;
+    border: 1px solid var(--color-panel-border);
+    background: var(--color-background);
+    padding: 0.5rem;
+    color: var(--color-foreground);
+    font-size: 0.75rem;
+    outline: none;
+    transition: border-color 150ms ease, background-color 150ms ease;
+  }
+
+  .terminal-input:focus {
+    border-color: var(--color-primary);
   }
 }
 
@@ -68,7 +84,7 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: #3f3f46;
+  background-color: #334155;
   border-radius: 10px;
 }
 

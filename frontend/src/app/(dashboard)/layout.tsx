@@ -124,7 +124,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-black">
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
       </div>
     );
@@ -134,12 +134,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (brokerPendingApproval) {
     return (
-      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black p-6">
+      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-background p-6">
         <div className="w-full max-w-lg rounded border border-panel-border bg-panel p-8 text-center">
-          <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded border border-amber-500/20 bg-amber-500/10 text-amber-400">
+          <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded border border-amber-500/25 bg-amber-500/10 text-amber-400">
             <AlertTriangle className="h-6 w-6" />
           </div>
-          <h2 className="text-xl font-bold text-amber-400">Đang chờ phê duyệt</h2>
+          <h2 className="text-xl font-semibold text-amber-400">Đang chờ phê duyệt</h2>
           <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-zinc-400">
             Tài khoản <span className="text-zinc-100">{session?.user?.email}</span> chưa được cấp quyền Broker.
           </p>
@@ -148,7 +148,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </p>
           <button
             onClick={handleLogout}
-            className="mt-6 rounded border border-panel-border bg-zinc-950 px-5 py-2 text-xs font-bold text-zinc-300 hover:border-primary/50"
+            className="mt-6 rounded border border-panel-border bg-background px-5 py-2 text-xs font-semibold text-zinc-300 hover:border-primary/50"
           >
             Đăng xuất
           </button>
@@ -168,13 +168,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     activeTab === "portfolio" ? "Danh mục" :
     "Cá nhân";
   const pageDescription =
-    activeTab === "intelligence" ? "Bảng điều khiển dữ liệu thị trường, nhận định và nguồn dữ liệu." :
+    activeTab === "intelligence" ? "Dữ liệu thị trường, nhận định và nhãn nguồn trong một màn làm việc." :
     activeTab === "inquiry" ? "Trao đổi giữa broker và nhà đầu tư." :
-    activeTab === "portfolio" ? "Theo dõi danh mục và khuyến nghị đã publish." :
+    activeTab === "portfolio" ? "Theo dõi danh mục và khuyến nghị đã công bố." :
     "Quản lý thông tin tài khoản và kết nối workspace.";
 
   return (
-    <main className="mx-auto min-h-screen max-w-[1440px] px-3 pb-8 pt-20 selection:bg-primary/30 md:px-5">
+    <main className="mx-auto min-h-screen max-w-[1440px] px-3 pb-8 pt-16 selection:bg-primary/30 md:px-5">
       <Navbar
         activeTab={activeTab}
         setActiveTab={(tab) => {
@@ -186,18 +186,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         user={session?.user}
       />
 
-      <div className="mb-3 rounded border border-panel-border bg-panel px-4 py-3">
+      <div className="mb-3 border-b border-panel-border px-1 py-4">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>
-            <div className="text-[10px] font-bold uppercase text-zinc-600">BROKERZ TERMINAL</div>
-            <h1 className="mt-0.5 text-lg font-bold text-zinc-100">{pageTitle}</h1>
+            <div className="text-xs font-medium text-zinc-500">Brokerz Terminal</div>
+            <h1 className="mt-0.5 text-xl font-semibold text-zinc-100">{pageTitle}</h1>
             <p className="mt-1 text-xs text-zinc-500">{pageDescription}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
-            <span className="rounded border border-panel-border bg-zinc-950 px-2 py-1">
+            <span className="rounded border border-panel-border bg-panel px-2 py-1 font-compact">
               {userType === "broker" ? "BROKER" : "INVESTOR"}
             </span>
-            <span className="rounded border border-panel-border bg-zinc-950 px-2 py-1">
+            <span className="rounded border border-panel-border bg-panel px-2 py-1">
               {workspace?.name || "Workspace"}
             </span>
           </div>
@@ -224,9 +224,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="hidden">{children}</div>
       </UserContext.Provider>
 
-      <div className="pointer-events-none fixed inset-0 -z-10 bg-background">
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:64px_64px]" />
-      </div>
+      <div className="pointer-events-none fixed inset-0 -z-10 bg-background" />
     </main>
   );
 }
