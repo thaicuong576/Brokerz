@@ -8,15 +8,66 @@ type RequestOptions = RequestInit & {
   auth?: boolean;
 };
 
+let cachedAccessToken: string | null = null;
+let authListenerReady = false;
+
+function ensureAuthListener() {
+  if (typeof window === "undefined") return;
+  if (authListenerReady) return;
+  authListenerReady = true;
+
+  // Best-effort: keep an in-memory token to avoid races where getSession()
+  // briefly returns null right after navigation/hydration.
+  supabase.auth.getSession().then(({ data }) => {
+    cachedAccessToken = data.session?.access_token || null;
+  }).catch(() => {
+    cachedAccessToken = null;
+  });
+
+  supabase.auth.onAuthStateChange((_event, session) => {
+    cachedAccessToken = session?.access_token || null;
+  });
+}
+
 async function getAccessToken() {
   if (typeof window === "undefined") return null;
-  const { data } = await supabase.auth.getSession();
-  return data.session?.access_token || null;
+  ensureAuthListener();
+  if (cachedAccessToken) return cachedAccessToken;
+
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token || null;
+    if (token) {
+      cachedAccessToken = token;
+      return token;
+    }
+  } catch {
+    // ignore and attempt refresh below
+  }
+
+  try {
+    const { data } = await supabase.auth.refreshSession();
+    const token = data.session?.access_token || null;
+    if (token) {
+      cachedAccessToken = token;
+      return token;
+    }
+  } catch {
+    // ignore
+  }
+
+  return null;
 }
 
 async function request(pathOrUrl: string, options: RequestOptions = {}) {
   const url = pathOrUrl.startsWith("http") ? pathOrUrl : `${API_BASE}${pathOrUrl}`;
-  const token = options.auth === false ? null : await getAccessToken();
+  const needsAuth = options.auth !== false;
+  let token = needsAuth ? await getAccessToken() : null;
+  // Small retry to smooth out hydration/auth races.
+  if (needsAuth && !token) {
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    token = await getAccessToken();
+  }
   const headers = new Headers(options.headers);
 
   if (!headers.has("Content-Type") && options.body) {
@@ -99,6 +150,11 @@ export interface PortfolioItemResponse {
   source_recommendation_id?: string | null;
   updated_at?: string | null;
   reason?: string | null;
+  last_action?: "BUY_NEW" | "INCREASE" | "DECREASE" | "SELL_ALL" | "THESIS_UPDATE" | null;
+  previous_weight?: number | null;
+  current_weight?: number | null;
+  last_event_at?: string | null;
+  last_event_note?: string | null;
 }
 
 export interface PortfolioResponse {
@@ -108,6 +164,25 @@ export interface PortfolioResponse {
   description?: string | null;
   created_by?: string | null;
   created_at?: string | null;
+  latest_event_at?: string | null;
+  items: PortfolioItemResponse[];
+}
+
+export interface PortfolioUpdateResponse {
+  id: string;
+  symbol: string;
+  action: "BUY_NEW" | "INCREASE" | "DECREASE" | "SELL_ALL" | "THESIS_UPDATE";
+  previous_weight: number;
+  current_weight: number;
+  note?: string | null;
+  applied_price?: number | null;
+  created_at?: string | null;
+  recommendation_id?: string | null;
+}
+
+export interface StrategySyncPayload {
+  name: string;
+  description?: string | null;
   items: PortfolioItemResponse[];
 }
 
@@ -249,8 +324,28 @@ export const apiService = {
     return response.json();
   },
 
-  async syncStrategy(_userId: string, data: any) {
+  async getPortfolioEvents(): Promise<PortfolioUpdateResponse[]> {
+    const response = await request("/portfolio/events");
+    return response.json();
+  },
+
+  async syncStrategy(_userId: string, data: StrategySyncPayload) {
     const response = await request("/portfolio/sync-strategy", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    return response.json();
+  },
+
+  async updatePortfolioPosition(data: {
+    symbol: string;
+    target_weight: number;
+    applied_price?: number;
+    thesis?: string;
+    risk_note?: string;
+    publish?: boolean;
+  }): Promise<PortfolioResponse> {
+    const response = await request("/portfolio/update-position", {
       method: "POST",
       body: JSON.stringify(data),
     });
@@ -466,7 +561,7 @@ const api = {
     const response = await request(path);
     return { data: await response.json() };
   },
-  async post(path: string, body?: any) {
+  async post(path: string, body?: unknown) {
     const response = await request(path, {
       method: "POST",
       body: body === undefined ? undefined : JSON.stringify(body),

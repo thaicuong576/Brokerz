@@ -82,6 +82,11 @@ def _to_float(value, default=0.0):
         return default
 
 
+def _normalize_stock_price(value):
+    price = _to_float(value)
+    return price / 1000 if abs(price) >= 1000 else price
+
+
 def _latest_vnindex_point(db: Session, target_date):
     row = (
         db.query(IndexSnapshot.point)
@@ -299,8 +304,8 @@ def get_stock_price(symbol: str, db: Session = Depends(get_db)):
             print(f"📡 Price missing in DB for {symbol}, fetching LIVE from SSI...")
             data = sync_manager.ssi.get_daily_stock_price(symbol)
             if data:
-                price = float(data.get("ClosePrice") or data.get("Close") or data.get("RefPrice") or 0)
-                ref = float(data.get("RefPrice") or data.get("PriorClose") or 0)
+                price = _normalize_stock_price(data.get("ClosePrice") or data.get("Close") or data.get("RefPrice") or 0)
+                ref = _normalize_stock_price(data.get("RefPrice") or data.get("PriorClose") or 0)
                 
                 # SAVE TO DB so it appears in next get_latest_stocks call
                 from src.models.schema import MarketPrice
@@ -322,7 +327,12 @@ def get_stock_price(symbol: str, db: Session = Depends(get_db)):
             
         raise HTTPException(status_code=404, detail="Stock price not found in DB or SSI")
         
-    return {"symbol": symbol.upper(), "price": row[0] or row[1], "ref_price": row[1], "is_live": False}
+    return {
+        "symbol": symbol.upper(),
+        "price": _normalize_stock_price(row[0] or row[1]),
+        "ref_price": _normalize_stock_price(row[1]),
+        "is_live": False,
+    }
 
 @router.get("/analytics/timeseries")
 def get_timeseries(id: str = "VNINDEX", limit: int = 50):
@@ -481,7 +491,14 @@ def get_latest_stocks(db: Session = Depends(get_db)):
         WHERE trading_date = :dt
     """)
     rows = db.execute(query, {"dt": active_date}).fetchall()
-    return [dict(row._mapping) for row in rows]
+    return [
+        {
+            **dict(row._mapping),
+            "price": _normalize_stock_price(row._mapping["price"]),
+            "ref_price": _normalize_stock_price(row._mapping["ref_price"]),
+        }
+        for row in rows
+    ]
 
 @router.get("/admin/stats")
 def get_admin_stats(db: Session = Depends(get_db)):
