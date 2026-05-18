@@ -64,3 +64,15 @@ process_pdfs.py
 # *.json
 *.csv
 .env.local
+
+# RAG vector store — rebuild from source, don't commit
+backend/chroma_db/
+backend/data/chroma_db/
+
+# PM2 runtime logs
+pm2-logs/
+
+# Build artifacts
+frontend/.next/
+frontend/node_modules/
+backend/.venv/

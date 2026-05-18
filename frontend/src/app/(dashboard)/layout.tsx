@@ -24,7 +24,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isTethered, setIsTethered] = useState(false);
   const [profile, setProfile] = useState<any>(null);
   const [workspace, setWorkspace] = useState<any>(null);
-  const [visitedTabs, setVisitedTabs] = useState<Set<string>>(new Set());
   const [brokerPendingApproval, setBrokerPendingApproval] = useState(false);
 
   const getActiveTab = () => {
@@ -34,16 +33,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (pathname.startsWith("/profile")) return "profile";
     return "intelligence";
   };
-
-  useEffect(() => {
-    const activeTab = getActiveTab();
-    setVisitedTabs((prev) => {
-      if (prev.has(activeTab)) return prev;
-      const next = new Set(prev);
-      next.add(activeTab);
-      return next;
-    });
-  }, [pathname]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
@@ -56,7 +45,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, authSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, authSession) => {
+      if (event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
+        if (authSession) setSession(authSession);
+        return;
+      }
       if (authSession?.user) {
         setSession(authSession);
         loadFoundation();
@@ -205,20 +198,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </div>
 
       <UserContext.Provider value={{ user: session?.user, profile, workspace, isBroker: userType === "broker" }}>
-        <div className={cn(activeTab === "intelligence" ? "relative opacity-100" : "invisible absolute -left-[9999px] -top-[9999px] opacity-0")}>
-          {visitedTabs.has("intelligence") && <Dashboard isBroker={userType === "broker"} />}
+        {/* Always mounted — block/hidden preserves React state across tab switches */}
+        <div className={cn(activeTab === "intelligence" ? "block" : "hidden")}>
+          <Dashboard isBroker={userType === "broker"} />
         </div>
 
-        <div className={cn(activeTab === "inquiry" ? "relative opacity-100" : "invisible absolute -left-[9999px] -top-[9999px] opacity-0")}>
-          {visitedTabs.has("inquiry") && <InquiryHub user={session?.user} isBroker={userType === "broker"} profile={profile} />}
+        <div className={cn(activeTab === "inquiry" ? "block" : "hidden")}>
+          <InquiryHub user={session?.user} isBroker={userType === "broker"} profile={profile} />
         </div>
 
-        <div className={cn(activeTab === "portfolio" ? "relative opacity-100" : "invisible absolute -left-[9999px] -top-[9999px] opacity-0")}>
-          {visitedTabs.has("portfolio") && <PortfolioView isBroker={userType === "broker"} user={session?.user} profile={profile} />}
+        <div className={cn(activeTab === "portfolio" ? "block" : "hidden")}>
+          <PortfolioView isBroker={userType === "broker"} user={session?.user} profile={profile} />
         </div>
 
-        <div className={cn(activeTab === "profile" ? "relative opacity-100" : "invisible absolute -left-[9999px] -top-[9999px] opacity-0")}>
-          {visitedTabs.has("profile") && <ProfileHub isBroker={userType === "broker"} user={session?.user} profile={profile} />}
+        <div className={cn(activeTab === "profile" ? "block" : "hidden")}>
+          <ProfileHub isBroker={userType === "broker"} user={session?.user} profile={profile} />
         </div>
 
         <div className="hidden">{children}</div>

@@ -1,0 +1,17 @@
+{
+  "name": "brokez-backend",
+  "cwd": "/opt/nops-labs/school-temp/backend",
+  "script": "/root/.cache/pypoetry/virtualenvs/brokez-platform-CAydlngN-py3.12/bin/python",
+  "args": [
+    "-m", "uvicorn",
+    "src.api.main:app",
+    "--host", "0.0.0.0",
+    "--port", "50005"
+  ],
+  "env": {
+    "PYTHONUNBUFFERED": "1"
+  },
+  "error_file": "/opt/nops-labs/school-temp/pm2-logs/brokez-backend.err.log",
+  "out_file": "/opt/nops-labs/school-temp/pm2-logs/brokez-backend.out.log",
+  "restart_delay": 4000
+}
