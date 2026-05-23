@@ -65,7 +65,7 @@ export function TetherGate({ onGateUnlock }: { user: any; onGateUnlock: () => vo
 
           <h2 className="text-4xl font-black tracking-tighter uppercase mb-4">Yêu cầu Kích hoạt</h2>
           <p className="text-muted-foreground font-medium mb-10 max-w-sm mx-auto">
-            Chào mừng bạn đến với hệ sinh thái Brokez. Để mở khóa dữ liệu và chiến lược đầu tư chuyên nghiệp, vui lòng nhập mã{" "}
+            Chào mừng bạn đến với hệ sinh thái Brokerz. Để mở khóa dữ liệu và chiến lược đầu tư chuyên nghiệp, vui lòng nhập mã{" "}
             <span className="text-white">SoulKey</span> được cung cấp bởi Broker của bạn.
           </p>
 

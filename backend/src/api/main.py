@@ -49,8 +49,8 @@ async def lifespan(app: FastAPI):
     db.stop_flusher()
 
 app = FastAPI(
-    title="Brokez Intelligence API",
-    description="Backend API phục vụ Brokez Terminal",
+    title="Brokerz Intelligence API",
+    description="Backend API phục vụ Brokerz Terminal",
     version="2.0.0",
     lifespan=lifespan
 )

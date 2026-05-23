@@ -2,7 +2,7 @@ export const MOCK_DATA = {
   profiles: {
     "broker-id": {
       id: "broker-id",
-      email: "broker@brokez.com",
+      email: "broker@brokerz.com",
       role: "broker",
       soul_key: "BKZ-ALPHA-9999",
       full_name: "Chuyên viên Tư vấn Cấp cao Alpha",
@@ -11,7 +11,7 @@ export const MOCK_DATA = {
     },
     "investor-id": {
       id: "investor-id",
-      email: "investor@brokez.com",
+      email: "investor@brokerz.com",
       role: "investor",
       following_key: "BKZ-EXPT-9901",
       full_name: "Nhà đầu tư Ưu tú Một"

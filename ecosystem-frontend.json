@@ -1,12 +1,12 @@
 {
-  "name": "brokez-frontend",
+  "name": "brokerz-frontend",
   "cwd": "/opt/nops-labs/school-temp/frontend",
   "script": "npx",
   "args": ["next", "start", "-p", "3007"],
   "env": {
     "NODE_ENV": "production"
   },
-  "error_file": "/opt/nops-labs/school-temp/pm2-logs/brokez-frontend.err.log",
-  "out_file": "/opt/nops-labs/school-temp/pm2-logs/brokez-frontend.out.log",
+  "error_file": "/opt/nops-labs/school-temp/pm2-logs/brokerz-frontend.err.log",
+  "out_file": "/opt/nops-labs/school-temp/pm2-logs/brokerz-frontend.out.log",
   "restart_delay": 4000
 }

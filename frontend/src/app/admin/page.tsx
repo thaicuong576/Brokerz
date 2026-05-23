@@ -98,7 +98,7 @@ export default function AdminDashboard() {
           <StatCard 
             title="Dung lượng Database" 
             value={`${stats?.db_size_mb || 0} MB`} 
-            subtitle="SQLite brokez.db"
+            subtitle="SQLite brokerz.db"
             icon={<CircleStackIcon className="w-6 h-6 text-[#f7ca49]" />}
           />
           <StatCard 

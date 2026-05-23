@@ -5,7 +5,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://brokez-backend.onrender.com/api/:path*"
+      "destination": "https://brokerz-backend.onrender.com/api/:path*"
     }
   ]
 }

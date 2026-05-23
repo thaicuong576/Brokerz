@@ -119,7 +119,7 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
             animate={{ opacity: 1, x: 0 }}
             className="text-4xl font-black tracking-tighter sm:text-5xl md:text-6xl uppercase italic"
           >
-            {getActiveTab() === "intelligence" && "Brokez"}
+            {getActiveTab() === "intelligence" && "Brokerz"}
             {getActiveTab() === "inquiry" && "Hỏi đáp"}
             {getActiveTab() === "portfolio" && "Danh mục"}
             {getActiveTab() === "profile" && "Cá nhân"}

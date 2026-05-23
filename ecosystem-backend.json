@@ -1,7 +1,7 @@
 {
-  "name": "brokez-backend",
+  "name": "brokerz-backend",
   "cwd": "/opt/nops-labs/school-temp/backend",
-  "script": "/root/.cache/pypoetry/virtualenvs/brokez-platform-CAydlngN-py3.12/bin/python",
+  "script": "/root/.cache/pypoetry/virtualenvs/brokerz-platform-CAydlngN-py3.12/bin/python",
   "args": [
     "-m", "uvicorn",
     "src.api.main:app",
@@ -11,7 +11,7 @@
   "env": {
     "PYTHONUNBUFFERED": "1"
   },
-  "error_file": "/opt/nops-labs/school-temp/pm2-logs/brokez-backend.err.log",
-  "out_file": "/opt/nops-labs/school-temp/pm2-logs/brokez-backend.out.log",
+  "error_file": "/opt/nops-labs/school-temp/pm2-logs/brokerz-backend.err.log",
+  "out_file": "/opt/nops-labs/school-temp/pm2-logs/brokerz-backend.out.log",
   "restart_delay": 4000
 }

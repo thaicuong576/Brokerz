@@ -1,7 +1,7 @@
 # File: src/config.py
 
 # 1. CẤU HÌNH HỆ THỐNG
-APP_NAME = "Brokez Intelligence Platform"
+APP_NAME = "Brokerz Intelligence Platform"
 VERSION = "2.2.1"
 
 # 1.5. DANH SÁCH CHỈ SỐ
@@ -53,7 +53,7 @@ SECTOR_MAPPING = {
 # Không thực hiện phép tính (chia, nhân) trong ngoặc nhọn.
 
 REPORT_PROMPT_TEMPLATE = """
-Bạn là Chuyên viên phân tích cấp cao của Brokez Intelligence Platform.
+Bạn là Chuyên viên phân tích cấp cao của Brokerz Intelligence Platform.
 Nhiệm vụ: Viết mục "NHẬN ĐỊNH THỊ TRƯỜNG" cho bản tin cuối ngày.
 
 ---

@@ -15,7 +15,7 @@ from src.services.market_logic import MarketLogic
 from src.services.ai_engine import AIEngine
 from src.config import SECTOR_MAPPING
 
-st.set_page_config(page_title="Brokez Intelligence Platform", layout="wide")
+st.set_page_config(page_title="Brokerz Intelligence Platform", layout="wide")
 
 # --- HELPER FUNCTIONS ---
 def load_data():
@@ -35,7 +35,7 @@ def load_data():
 
 # --- MAIN UI ---
 def main():
-    st.title("📈 Brokez Intelligence Assistant")
+    st.title("📈 Brokerz Intelligence Assistant")
     st.markdown("---")
 
     if 'report_data' not in st.session_state:

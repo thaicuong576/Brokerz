@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "brokez-platform"
+name = "brokerz-platform"
 version = "0.1.0"
-description = "Institutional financial intelligence platform powered by Brokez AI"
+description = "Institutional financial intelligence platform powered by Brokerz AI"
 authors = ["NDPhuu <ducphu.tc10@gmail.com>"]
 readme = "README.md"
 package-mode = false
